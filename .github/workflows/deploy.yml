@@ -1,10 +1,11 @@
-name: Deploy viewer to GitHub Pages
+name: Deploy viewers to GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
       - "viewer/**"
+      - "viewer-semarang/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -17,10 +18,6 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: viewer
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,13 +26,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: viewer/package-lock.json
-      - run: npm ci
-      - run: npm run build
+
+      # 日本版ビューア → サイトのルート
+      - name: Build viewer (Japan)
+        working-directory: viewer
+        run: |
+          npm ci
+          npm run build
+
+      # Semarang 公開マップ → /semarang/ 配下
+      # GitHub Pages はリポジトリに1サイトしか持てないので同居させる。
+      # viewer-semarang/vite.config.ts の base も /food-store-master/semarang/ に揃えてある。
+      - name: Build viewer (Semarang)
+        working-directory: viewer-semarang
+        run: |
+          npm ci
+          npm run build
+
+      - name: Combine into one artifact
+        run: |
+          mkdir -p _site
+          cp -r viewer/dist/. _site/
+          mkdir -p _site/semarang
+          cp -r viewer-semarang/dist/. _site/semarang/
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: viewer/dist
+          path: _site
 
   deploy:
     needs: build

@@ -48,12 +48,22 @@ OUT = "docs/semarang/検証_学校周辺タバコ販売_バッファ.csv"
 R_SALES = 200
 R_ADS = 500
 
-# 学校集合の定義を変えて感度を見る。「satuan pendidikan」に TK/PAUD が含まれるかは
-# 条文解釈が分かれうるため、含む場合と含まない場合の両方を出す。
+# ★ 2026-08-04、条文で確定した。感度分析ではなく**法定の集合が決まった**。
+#
+#   Pasal 434(1)(e):
+#     「dalam radius 200 (dua ratus) meter dari satuan pendidikan dan tempat bermain anak」
+#   Penjelasan Pasal 518 Ayat (1)（p.570）＝ PP 全体で唯一の satuan pendidikan の定義:
+#     「Satuan pendidikan antara lain pendidikan anak usia dini, sekolah/madrasah,
+#       pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal.」
+#
+#   → **PAUD/TK を含む**。madrasah・pesantren・perguruan tinggi も含む。
+#     当初「集合A（SD/SMP/SMA）」を主指標にしていたのは**法的に過小**だった。
+#     informal（learning center 等）は「pendidikan formal と同種」と言えないので除く。
+LEGAL = "level in ('TK','SD','SMP','SMA','SLB','PT')"
 SCHOOL_SETS = [
-    ("A 小中高のみ(SD/SMP/SMA)", "level in ('SD','SMP','SMA')"),
-    ("B 中高のみ(SMP/SMA)",      "level in ('SMP','SMA')"),
-    ("C 幼稚園含む全校種",        "1=1"),
+    ("★法定 satuan pendidikan", LEGAL),
+    ("（参考）SD/SMP/SMA のみ", "level in ('SD','SMP','SMA')"),
+    ("（参考）SMP/SMA のみ",    "level in ('SMP','SMA')"),
 ]
 
 # タバコを販売する蓋然性が高い業態。minimarket は確実、toko_kelontong も通常販売する。
@@ -104,7 +114,7 @@ for label, sfilter in SCHOOL_SETS:
 h("② 広告禁止 500m — 圏内の店舗数")
 print("  （現地調査では banner の実数を数えるので、これは『対象になりうる店舗』の母数）")
 print(f"  {'業態':18s} {'総数':>6s} {'500m圏内':>9s} {'割合':>7s}")
-sfilter = "level in ('SD','SMP','SMA')"
+sfilter = LEGAL
 for cat in TOBACCO_CATS:
     tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
     n_in, = con.execute(f"""
@@ -140,7 +150,7 @@ r = con.execute(f"""
                                      and floor(s.x/1000)::bigint + 1
      and floor(t.y/1000)::bigint between floor(s.y/1000)::bigint - 1
                                      and floor(s.y/1000)::bigint + 1
-    where t.cat='minimarket' and s.level in ('SD','SMP','SMA')
+    where t.cat='minimarket' and s.level in ('TK','SD','SMP','SMA','SLB','PT')
     group by 1)
   select count(*), round(min(m)), round(quantile_cont(m,0.25)), round(median(m)),
          round(quantile_cont(m,0.75)), round(max(m)) from d""").fetchone()
