@@ -1,44 +1,47 @@
 #!/usr/bin/env python3
 """
-PP 28/2024 の学校周辺規制を、**既存データだけで**先行評価する。
+Evaluate the PP 28/2024 school-radius provisions **from existing data alone**, before any
+field survey.
 
-PP 28/2024（UU 17/2023 施行令）の該当条項:
-  - 販売禁止 **200m**: satuan pendidikan の周囲
-    （条文は "tempat bermain anak" も併記するが、これは一般の児童公園ではなく
-     **kelompok bermain＝PAUD の一形態**を指す。TK/PAUD に含まれるので別レイヤは不要）
-  - 広告禁止 **500m**: 教育施設の周囲
-  - 併せて rokok ketengan（ばら売り）禁止、購入年齢 18→21 歳
+Relevant provisions of PP 28/2024 (implementing UU 17/2023)
+  - **200 m**: sale of tobacco products prohibited around satuan pendidikan.
+    The article also names "tempat bermain anak", but that means *kelompok bermain* —
+    a form of PAUD — rather than a public playground, so it is already inside the TK/PAUD
+    layer and needs no separate source.
+  - **500 m**: advertising of tobacco products prohibited around educational facilities.
+  - Also: ban on rokok ketengan (single-stick sales); purchase age raised 18 -> 21.
 
-現時点で測れること・測れないこと
---------------------------------
-測れる: minimarket（Alfamart/Indomaret 等）は確実にタバコを販売するので、
-        「200m 圏内の minimarket 数」＝**販売規制の潜在的非適合の下限**が出せる。
-測れない: warung / toko kelontong は現状マスターに 186 件しか無く（実態は桁違いに多い）、
-        しかもタバコ販売の有無は POI 属性に無い。**ここが現地調査で埋める部分**。
+What can and cannot be measured here
+------------------------------------
+Measurable: minimarkets (Alfamart/Indomaret etc.) certainly sell tobacco, so the count within
+200 m is a **lower bound on potential non-compliance**.
 
-したがって本スクリプトの出力は「現地調査でどれだけ数字が増えるか」の下限であり、
-調査の必要性そのものを定量化する材料になる。
+Not measurable: warung / toko kelontong number only 186 in the master (reality is orders of
+magnitude higher), and whether an outlet sells tobacco is not a POI attribute at all.
+**That gap is what the field survey exists to fill.**
 
-学校レイヤについて
-------------------
-`build_schools_combined.py` の出力（OSM ∪ Dukcapil）を使う。ただし **Dukcapil は
-Semarang で SD/SMP を1件も持たない**（全国では持つが地域的に不均一。'Senior High School'
-に至ってはタグ自体が全国に存在しない）ため、**集合 A（SD/SMP/SMA）は実質 OSM 単独**。
-Dukcapil の寄与は TK/PAUD（+480 校）に限られ、集合 C にのみ効く。
-→ **A の網羅性は未検証のまま**であることを結果の解釈時に忘れないこと。
+So the output is a floor, and the size of the floor quantifies why the survey is needed.
 
-入力: data/semarang/semarang_food_master.parquet
-      data/semarang/schools_semarang_combined.parquet
-出力: docs/semarang/verify_tobacco-school-buffers.csv
+About the school layer
+----------------------
+Uses the output of build_schools_combined.py (OSM union Dukcapil). Note that **Dukcapil holds
+no SD or SMP for Semarang** (it does nationally, but coverage is regionally uneven, and
+'Senior High School' does not exist as a tag anywhere). Dukcapil therefore contributes only
+TK/PAUD (+352 institutions). Completeness of the SD/SMP/SMA layer is measured separately in
+verify_school_completeness.py — it is 76.4%.
+
+Input:  data/semarang/semarang_outlets_best.parquet (falls back to the master)
+        data/semarang/schools_semarang_combined.parquet
+Output: docs/semarang/verify_tobacco-school-buffers.csv
 """
 import os
 
 import duckdb
 
 D = "data/semarang"
-# ★ 店舗レイヤは best-available を優先する（build_outlets_best_available.py の出力）。
-#   マスターのチェーン網羅率は 42%、しかも kecamatan 別 0.19〜0.79 と**空間的に偏る**ため、
-#   曝露研究の入力としては絶対数だけでなく割合まで壊れる。best 層は網羅 ~85%。
+# Prefer the best-available outlet layer (build_outlets_best_available.py). The master's own
+# chain coverage is 42% and, worse, **spatially biased** (0.19-0.79 by kecamatan), which
+# corrupts proportions and not merely counts. The best layer reaches ~85%.
 _BEST = f"{D}/semarang_outlets_best.parquet"
 _MASTER = f"{D}/semarang_food_master.parquet"
 _SRC = _BEST if os.path.exists(_BEST) else _MASTER
@@ -46,31 +49,31 @@ M = f"read_parquet('{_SRC}')"
 S = f"read_parquet('{D}/schools_semarang_combined.parquet')"
 OUT = "docs/semarang/verify_tobacco-school-buffers.csv"
 
-# PP 28/2024 の2つの半径
+# The two radii in PP 28/2024
 R_SALES = 200
 R_ADS = 500
 
-# ★ 2026-08-04、条文で確定した。感度分析ではなく**法定の集合が決まった**。
+# Settled against the regulation text on 2026-08-04. This is no longer a sensitivity
+# analysis over plausible readings — **the statutory set is known**.
 #
 #   Pasal 434(1)(e):
-#     「dalam radius 200 (dua ratus) meter dari satuan pendidikan dan tempat bermain anak」
-#   Penjelasan Pasal 518 Ayat (1)（p.570）＝ PP 全体で唯一の satuan pendidikan の定義:
-#     「Satuan pendidikan antara lain pendidikan anak usia dini, sekolah/madrasah,
-#       pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal.」
+#     "dalam radius 200 (dua ratus) meter dari satuan pendidikan dan tempat bermain anak"
+#   Penjelasan Pasal 518 Ayat (1), p.570 — the only definition of satuan pendidikan in the
+#   entire regulation:
+#     "Satuan pendidikan antara lain pendidikan anak usia dini, sekolah/madrasah,
+#      pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal."
 #
-#   → **PAUD/TK を含む**。madrasah・pesantren・perguruan tinggi も含む。
-#     条文が並記する "tempat bermain anak" は一般の児童公園ではなく
-#     **kelompok bermain（KB）＝PAUD の一形態**を指すので、TK/PAUD に含まれている。
-#     当初「集合A（SD/SMP/SMA）」を主指標にしていたのは**法的に過小**だった。
-#     informal（learning center 等）は「pendidikan formal と同種」と言えないので除く。
+#   => **PAUD/TK is included**, as are madrasah, pesantren and higher education.
+#      Treating SD/SMP/SMA as the primary set (the earlier approach) was legally too narrow.
+#      'informal' (learning centres) is excluded — not "sejenis dengan pendidikan formal".
 LEGAL = "level in ('TK','SD','SMP','SMA','SLB','PT')"
 SCHOOL_SETS = [
-    ("★法定 satuan pendidikan", LEGAL),
-    ("（参考）SD/SMP/SMA のみ", "level in ('SD','SMP','SMA')"),
-    ("（参考）SMP/SMA のみ",    "level in ('SMP','SMA')"),
+    ("statutory satuan pendidikan", LEGAL),
+    ("(ref) SD/SMP/SMA only", "level in ('SD','SMP','SMA')"),
+    ("(ref) SMP/SMA only", "level in ('SMP','SMA')"),
 ]
 
-# タバコを販売する蓋然性が高い業態。minimarket は確実、toko_kelontong も通常販売する。
+# Formats that very likely sell tobacco. Minimarkets certainly do; toko kelontong normally do.
 TOBACCO_CATS = ["minimarket", "toko_kelontong"]
 
 con = duckdb.connect()
@@ -81,7 +84,8 @@ def h(t):
     print(f"\n{'=' * 72}\n{t}\n{'=' * 72}")
 
 
-# 等距円筒近似（この環境の DuckDB は spheroid 系が nan を返す）。緯度 -7 度。
+# Equirectangular approximation — ST_Distance_Spheroid returns nan in this environment.
+# Latitude -7, so the longitude correction is cos(7 deg) ~ 0.993.
 con.execute(f"""create table st as
   select cat, name, src,
          lon*111320*0.99255 x, lat*111320 y, lat, lon
@@ -93,15 +97,15 @@ con.execute(f"""create table sc as
 
 n_st, = con.execute("select count(*) from st").fetchone()
 n_sc, = con.execute("select count(*) from sc").fetchone()
-print(f"店舗 {n_st:,} 件 / 学校 {n_sc:,} 件")
-print(f"店舗レイヤ: {os.path.basename(_SRC)}")
+print(f"outlets {n_st:,} / educational institutions {n_sc:,}")
+print(f"outlet layer: {os.path.basename(_SRC)}")
 
-h("① PP 28/2024 販売禁止 200m — 圏内の店舗数（潜在的非適合の下限）")
+h("1. 200 m sales-prohibition radius — outlets inside (lower bound)")
 rows = []
 for label, sfilter in SCHOOL_SETS:
     n_school, = con.execute(f"select count(*) from sc where {sfilter}").fetchone()
-    print(f"\n  --- 学校集合 {label}（{n_school:,} 校）---")
-    print(f"  {'業態':18s} {'総数':>6s} {'200m圏内':>9s} {'割合':>7s}")
+    print(f"\n  --- school set: {label} ({n_school:,}) ---")
+    print(f"  {'format':18s} {'total':>6s} {'within 200m':>12s} {'share':>7s}")
     for cat in TOBACCO_CATS:
         tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
         n_in, = con.execute(f"""
@@ -112,12 +116,12 @@ for label, sfilter in SCHOOL_SETS:
                                                 and floor(t.y/{R_SALES})::bigint + 1
           where t.cat='{cat}' and {sfilter.replace('level', 's.level')}
             and sqrt(power(t.x-s.x,2)+power(t.y-s.y,2)) <= {R_SALES}""").fetchone()
-        print(f"  {cat:18s} {tot:>6,} {n_in:>9,} {n_in/tot*100:>6.1f}%")
+        print(f"  {cat:18s} {tot:>6,} {n_in:>12,} {n_in/tot*100:>6.1f}%")
         rows.append((label, n_school, cat, R_SALES, tot, n_in, round(n_in/tot, 4)))
 
-h("② 広告禁止 500m — 圏内の店舗数")
-print("  （現地調査では banner の実数を数えるので、これは『対象になりうる店舗』の母数）")
-print(f"  {'業態':18s} {'総数':>6s} {'500m圏内':>9s} {'割合':>7s}")
+h("2. 500 m advertising-prohibition radius — outlets inside")
+print("  (a field survey counts actual banners; this is the population at risk)")
+print(f"  {'format':18s} {'total':>6s} {'within 500m':>12s} {'share':>7s}")
 sfilter = LEGAL
 for cat in TOBACCO_CATS:
     tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
@@ -129,10 +133,11 @@ for cat in TOBACCO_CATS:
                                           and floor(t.y/{R_ADS})::bigint + 1
       where t.cat='{cat}' and {sfilter.replace('level', 's.level')}
         and sqrt(power(t.x-s.x,2)+power(t.y-s.y,2)) <= {R_ADS}""").fetchone()
-    print(f"  {cat:18s} {tot:>6,} {n_in:>9,} {n_in/tot*100:>6.1f}%")
-    rows.append(("A 小中高のみ(SD/SMP/SMA)", 0, cat, R_ADS, tot, n_in, round(n_in/tot, 4)))
+    print(f"  {cat:18s} {tot:>6,} {n_in:>12,} {n_in/tot*100:>6.1f}%")
+    rows.append(("statutory satuan pendidikan", 0, cat, R_ADS, tot, n_in,
+                 round(n_in/tot, 4)))
 
-h("③ 学校側から見る — 200m 圏内に minimarket がある学校の割合")
+h("3. Seen from the schools — share with a minimarket within 200 m")
 for label, sfilter in SCHOOL_SETS:
     tot, = con.execute(f"select count(*) from sc where {sfilter}").fetchone()
     n_in, = con.execute(f"""
@@ -143,9 +148,9 @@ for label, sfilter in SCHOOL_SETS:
                                             and floor(s.y/{R_SALES})::bigint + 1
       where t.cat='minimarket' and {sfilter.replace('level', 's.level')}
         and sqrt(power(t.x-s.x,2)+power(t.y-s.y,2)) <= {R_SALES}""").fetchone()
-    print(f"  {label:26s} {n_in:>5,} / {tot:<6,} = {n_in/tot*100:5.1f}%")
+    print(f"  {label:30s} {n_in:>5,} / {tot:<6,} = {n_in/tot*100:5.1f}%")
 
-h("④ 最近隣 minimarket までの距離分布（学校別・SD/SMP/SMA）")
+h("4. Distance to nearest minimarket, per institution")
 r = con.execute(f"""
   with d as (
     select s.osm_id, min(sqrt(power(t.x-s.x,2)+power(t.y-s.y,2))) m
@@ -154,30 +159,34 @@ r = con.execute(f"""
                                      and floor(s.x/1000)::bigint + 1
      and floor(t.y/1000)::bigint between floor(s.y/1000)::bigint - 1
                                      and floor(s.y/1000)::bigint + 1
-    where t.cat='minimarket' and s.level in ('TK','SD','SMP','SMA','SLB','PT')
+    where t.cat='minimarket' and s.{LEGAL}
     group by 1)
   select count(*), round(min(m)), round(quantile_cont(m,0.25)), round(median(m)),
          round(quantile_cont(m,0.75)), round(max(m)) from d""").fetchone()
 print(f"  n={r[0]:,}  min={r[1]:.0f}m  p25={r[2]:.0f}m  median={r[3]:.0f}m  "
       f"p75={r[4]:.0f}m  max={r[5]:.0f}m")
+print("  Note: the bucketed search truncates very distant pairs, so this median runs a few"
+      "\n  metres low. export_viewer_geojson.py computes it over the full layer (210 m).")
 
-h("⑤ 現地調査で埋まる部分の見積もり")
+h("5. What the field survey would add")
 km, = con.execute("select count(*) from st where cat='toko_kelontong'").fetchone()
-print(f"  現在の toko_kelontong は {km} 件。実態は桁違いに多い（POI に載らないため）。")
-print("  → ①の toko_kelontong 行は依然**下限**。現地調査でしか埋まらない。")
-print("  → minimarket は best-available 層（推定真値の ~85%）に差し替え済み。")
-print("     マスター単独では網羅 42%・kecamatan 別 0.19〜0.79 の偏りがあり使えなかった。")
-print("\n  ★ 差し替えで分かった重要な非対称性:")
-print("     - **店舗を分母にした割合はほぼ動かない**（200m 圏内 46.7% → 47.1%）")
-print("     - **学校を分母にした割合は大きく動く**（33.2% → 49.4%）")
-print("     店舗と学校が同じ商業街路に共在するため、店を足しても『学校の近くにある店の")
-print("     割合』は変わらないが、『近くに店がある学校の割合』は閾値越えが増えて跳ね上がる。")
-print("     → 曝露研究の主指標には**学校を分母にした指標**を採ること。網羅率の影響を")
-print("        受けやすく、かつ政策的にも意味がある（規制半径内の学校数）。")
+print(f"  toko_kelontong currently {km}. Reality is orders of magnitude higher — these")
+print("  outlets appear in no POI source, so only fieldwork closes the gap.")
+print("  minimarket has already been swapped to the best-available layer (~85% of the")
+print("  estimated true count). The master alone was 42% and spatially biased (0.19-0.79")
+print("  by kecamatan), so it was unusable as an exposure input.")
+print("\n  ** The asymmetry the swap revealed:")
+print("     - outlet-denominated share barely moves    (within 200 m: 46.7% -> 47.1%)")
+print("     - exposure-denominated share moves sharply (33.2% -> 49.4%)")
+print("     Outlets and schools sit on the same commercial streets, so adding ~400 stores")
+print("     hardly changes what fraction of stores happen to be near a school — but it")
+print("     pushes many schools across the 200 m threshold for the first time.")
+print("  => Use the **exposure-side denominator** as the primary measure. It is the one")
+print("     sensitive to coverage, and the policy-relevant quantity.")
 
 os.makedirs("docs/semarang", exist_ok=True)
-con.execute("create table res(学校集合 varchar, 学校数 bigint, 業態 varchar, "
-            "半径m int, 店舗総数 bigint, 圏内店舗数 bigint, 割合 double)")
+con.execute("create table res(school_set varchar, n_schools bigint, format varchar, "
+            "radius_m int, outlets_total bigint, outlets_within bigint, share double)")
 con.executemany("insert into res values (?,?,?,?,?,?,?)", rows)
 con.execute(f"copy res to '{OUT}' (header, delimiter ',')")
-print(f"\n出力: {OUT}")
+print(f"\nwrote: {OUT}")

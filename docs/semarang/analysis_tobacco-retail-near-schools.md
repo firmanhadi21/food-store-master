@@ -335,7 +335,7 @@ School set A (SD/SMP/SMA):
 
 | Outlet type | Within 500 m | Share |
 |---|---:|---:|
-| minimarket | 832 / 949 | **87.7%** |
+| minimarket | 927 / 949 | **97.7%** |
 | toko_kelontong | 163 / 186 | 87.6% |
 
 **Essentially the entire chain minimarket network sits inside the advertising-restricted zone.**

@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 """
-Kota Semarang 食料品店マスター構築（Semarang Phase1）
+Build the Kota Semarang food store master (Semarang Phase 1).
 
-日本版 build_food_store_master.py からの設計変更（すべて実測に基づく）
---------------------------------------------------------------------
-1. **和集合を採る**（日本版は「単一ソース優先・∪は原則使わない」）
-   日本のコンビニは Overture 単独で実数の 97.6% を取れ、素朴な和集合は 133% に膨張した。
-   Semarang は逆で、diagnose_match_radius.py の実測により:
-     - OSM 独自のミニマーケット 119 件は、100m 以内に Overture の convenience が**1件も無い**
-     - 突合率は 50m→100m でほぼ横ばい（Alfamart 17→18）＝座標ズレではなく**別の実在店舗**
-   → 両ソースは真に相補的。和集合が正しい。
+Design changes from the Japan version (build_food_store_master.py), all evidence-driven
+------------------------------------------------------------------------------------
+1. **Take the union of sources.** The Japan version states "prefer a single best source per
+   category; do not use unions." There, convenience stores reached 97.6% from Overture alone
+   and a naive union inflated counts to 133%. Semarang inverts this. From
+   diagnose_match_radius.py:
+     - match counts plateau across the interpretable 50-200 m band (Alfamart 17 -> 18 -> 22)
+     - median nearest-neighbour distance between same-brand stores is 524 m, so any match
+       radius above ~200 m is picking up a *different* store, not the same one
+     - 119 OSM-only minimarkets have **no Overture convenience store at all** within 100 m
+   => the sources are genuinely complementary; the union is correct.
 
-2. **OSM を pasar の唯一ソースにする**
-   実測 OSM 61 件 vs Overture 10 件。伝統市場は生鮮アクセスの主役なので、
-   ここで Overture を主にすると生鮮アクセスを 6 倍過小評価する。
+2. **OSM is the only usable source for pasar.** Measured: OSM 61 vs Overture 10. Traditional
+   markets are the dominant fresh-food channel, so making Overture primary would understate
+   fresh food access roughly sixfold.
 
-3. **drugstore カテゴリを廃止**（インドネシアの apotek は食料品を扱わない）
+3. **The drugstore category is dropped** — Indonesian apotek do not sell food, unlike the
+   Japanese drugstores the MAFF definition includes.
 
-4. **name 主・category 従の分類**（semarang_food_rules.py 参照）
+4. **Name-driven classification, category as weak prior** (see semarang_food_rules.py).
 
-入力:
-  data/semarang/overture_semarang_all.parquet
-  data/semarang/osm_semarang_food.parquet
-  data/semarang/semarang_boundary_poly.geojson
-出力:
-  data/semarang/semarang_food_master.parquet / .csv
+Input:  data/semarang/overture_semarang_all.parquet
+        data/semarang/osm_semarang_food.parquet
+        data/semarang/semarang_boundary_poly.geojson
+Output: data/semarang/semarang_food_master.parquet / .csv
 """
 import os
 import sys
@@ -41,12 +43,13 @@ POLY = f"{D}/semarang_boundary_poly.geojson"
 OUT_PARQUET = f"{D}/semarang_food_master.parquet"
 OUT_CSV = f"{D}/semarang_food_master.csv"
 
-# 100m ≒ 0.0009 度。Semarang は緯度 -7 度で cos≒0.993 なのでほぼ等方、度で近似してよい。
+# 100 m ~ 0.0009 degrees. Semarang sits at latitude -7 where cos ~ 0.993, so the grid is
+# near-isotropic and degrees are an acceptable approximation.
 DEDUP_DEG = 0.0009
 
-# Overture の低 confidence を切る閾値。実測の median は grocery_store 0.489 /
-# convenience_store 0.699 / supermarket 0.8。日本版に閾値は無かったが、
-# Semarang は meta 由来 98% で品質が低いため足切りする。
+# Confidence floor for Overture. Measured medians: grocery_store 0.489,
+# convenience_store 0.699, supermarket 0.8. The Japan version needed no threshold;
+# Semarang does, because 98% of records are Meta-derived and quality is lower.
 MIN_CONF = 0.30
 
 
@@ -59,7 +62,7 @@ def main():
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute(f"create table kota as select geom::GEOMETRY geom from ST_Read('{POLY}')")
 
-    # ---- 1. Overture: 市域クリップ → 分類 ----
+    # ---- 1. Overture: clip to the city, then classify ----
     con.execute(f"""create table ov_raw as
       select name, category, confidence, brand_name, lon, lat, ST_Point(lon, lat) geom
       from read_parquet('{D}/overture_semarang_all.parquet')
@@ -71,7 +74,7 @@ def main():
       from ov_raw""")
     con.execute("create table ov_hit as select * from ov where cat is not null")
 
-    # ---- 2. OSM: 市域クリップ → 分類 ----
+    # ---- 2. OSM: clip, then classify ----
     con.execute(f"""create table osm_raw as
       select name, shop, amenity, brand, operator, lon, lat, ST_Point(lon, lat) geom
       from read_parquet('{D}/osm_semarang_food.parquet')
@@ -82,27 +85,27 @@ def main():
       from osm_raw""")
     con.execute("create table osm_hit as select * from osm where cat is not null")
 
-    h("① 分類結果（市域内・重複排除前）")
+    h("1. Classification result (within city limits, before deduplication)")
     nov_raw, = con.execute("select count(*) from ov_raw").fetchone()
     nosm_raw, = con.execute("select count(*) from osm_raw").fetchone()
     nov, = con.execute("select count(*) from ov_hit").fetchone()
     nosm, = con.execute("select count(*) from osm_hit").fetchone()
-    print(f"  Overture: 市域内 {nov_raw:,} 件（conf>={MIN_CONF}） → 食料品店 {nov:,} 件")
-    print(f"  OSM:      市域内 {nosm_raw:,} 件              → 食料品店 {nosm:,} 件")
-    print(f"\n  {'カテゴリ':16s} {'Overture':>10s} {'OSM':>8s}")
+    print(f"  Overture: {nov_raw:,} in city (conf>={MIN_CONF}) -> {nov:,} food retail")
+    print(f"  OSM:      {nosm_raw:,} in city              -> {nosm:,} food retail")
+    print(f"\n  {'category':16s} {'Overture':>10s} {'OSM':>8s}")
     for cat in CATEGORIES:
         a, = con.execute(f"select count(*) from ov_hit where cat='{cat}'").fetchone()
         b, = con.execute(f"select count(*) from osm_hit where cat='{cat}'").fetchone()
         print(f"  {cat:16s} {a:>10,} {b:>8,}")
 
-    # ---- 3. 和集合（OSM を優先し、Overture 側の重複を落とす）----
-    # OSM 優先の理由: ブランド付与率 83.8% vs 27.8%、タグが人手で信頼できる。
-    # ただし件数は Overture の方が多いので、OSM に無いものは Overture から拾う。
+    # ---- 3. Union: prefer OSM, drop Overture records it already covers ----
+    # OSM is preferred because its brand fill rate is 83.8% against Overture's 27.8% and its
+    # tags are hand-placed. Overture still contributes the bulk of the volume.
     #
-    # ★ 重複判定は「同カテゴリ・近接」だけでは**誤り**。インドネシアでは
-    #   Alfamart と Indomaret が**意図的に向かい合わせに出店する**ため、
-    #   カテゴリだけで 100m 名寄せすると別チェーンの実在2店が1店に潰れる。
-    #   → チェーンキー（判別できる場合）を一致条件に加える。
+    # ** Matching on category and distance alone is WRONG here.** In Indonesia Alfamart and
+    #   Indomaret deliberately open directly opposite one another, so a 100 m
+    #   same-category merge collapses two genuinely different stores into one. A chain key
+    #   is therefore part of the match condition.
     for tbl in ("ov_hit", "osm_hit"):
         con.execute(f"""create or replace table {tbl} as
           select *, case
@@ -117,7 +120,8 @@ def main():
             else null end as chain from {tbl}""")
 
     con.execute("create index osm_ix on osm_hit using rtree(geom)")
-    # チェーンが判別できるものは chain 一致を要求、できないものはカテゴリ近接のみで判定
+    # Where a chain is identifiable, require the chains to agree; otherwise fall back to
+    # category proximity alone.
     MATCH = ("o.cat = v.cat and (v.chain is null or o.chain is null "
              "or v.chain = o.chain)")
     con.execute(f"""create table ov_uniq as
@@ -125,12 +129,14 @@ def main():
       where not exists (select 1 from osm_hit o
                         where {MATCH} and ST_DWithin(v.geom, o.geom, {DEDUP_DEG}))""")
 
-    # ソース内の重複も落とす（Overture は同一店が提供元ごとに別レコードで残る）。
+    # Remove within-source duplicates too (Overture keeps one record per contributing
+    # dataset for the same physical store).
     #
-    # ★ 第1版はグリッドセル（floor(lat/deg)）+ 完全一致名でバケット化していたが、
-    #   これでは **セル境界をまたぐ 20m 差のペアが落ちない**（実際 707→707 で1件も
-    #   除去されず、検証で「minimarket の 12.9% が 50m 以内に同カテゴリ他店あり」と出た）。
-    #   → 真の空間近傍で「クラスタの先頭だけ残す」方式に変更する。
+    # ** The first version bucketed by grid cell (floor(lat/deg)) plus exact name, which
+    #   **cannot catch a 20 m pair straddling a cell boundary** — it removed exactly zero
+    #   records (707 -> 707), and verification then reported "12.9% of minimarkets have
+    #   another minimarket within 50 m". Replaced with true spatial neighbour search,
+    #   keeping the first member of each cluster.
     con.execute("""create table ov_seq as
       select *, row_number() over (order by confidence desc nulls last, name) as seq
       from ov_uniq""")
@@ -148,14 +154,14 @@ def main():
       union all
       select cat, name, brand, src, confidence, lon, lat, geom from ov_dedup""")
 
-    h("② 重複排除の効果")
+    h("2. Effect of deduplication")
     n_ovu, = con.execute("select count(*) from ov_uniq").fetchone()
     n_ovd, = con.execute("select count(*) from ov_dedup").fetchone()
-    print(f"  Overture {nov:,} → OSM と重複除去 {n_ovu:,} → ソース内重複除去 {n_ovd:,}")
-    print(f"  OSM {nosm:,}（全採用）")
-    print(f"  → マスター候補 {n_ovd + nosm:,} 件")
+    print(f"  Overture {nov:,} -> minus OSM overlap {n_ovu:,} -> minus internal {n_ovd:,}")
+    print(f"  OSM {nosm:,} (all kept)")
+    print(f"  -> master candidates {n_ovd + nosm:,}")
 
-    # ---- 4. 出力 ----
+    # ---- 4. Output ----
     con.execute("""create table master as
       select row_number() over (order by cat, name) as store_id,
              cat, name, brand, src, confidence, lat, lng, geom
@@ -163,9 +169,9 @@ def main():
             from master_raw)""")
     n, = con.execute("select count(*) from master").fetchone()
 
-    h("③ 最終マスター")
-    print(f"  合計 {n:,} 件\n")
-    print(f"  {'カテゴリ':16s} {'計':>7s} {'overture':>9s} {'osm':>6s}  {'名称あり':>8s}")
+    h("3. Final master")
+    print(f"  total {n:,}\n")
+    print(f"  {'category':16s} {'total':>7s} {'overture':>9s} {'osm':>6s}  {'named':>8s}")
     for cat in CATEGORIES:
         r = con.execute(f"""select count(*),
             count(*) filter (where src='overture'), count(*) filter (where src='osm'),
@@ -177,15 +183,17 @@ def main():
                 f"from master) to '{OUT_PARQUET}' (FORMAT parquet)")
     con.execute(f"copy (select store_id,cat,name,brand,src,confidence,lat,lng "
                 f"from master) to '{OUT_CSV}' (header, delimiter ',')")
-    print(f"\n出力: {OUT_PARQUET}")
-    print(f"出力: {OUT_CSV}")
+    print(f"\nwrote: {OUT_PARQUET}")
+    print(f"wrote: {OUT_CSV}")
 
-    h("④ チェーン実数チェック（外部検証できる唯一の足がかり）")
+    h("4. Chain counts (the only externally verifiable handle)")
     for kw in ["alfamart", "indomaret", "alfamidi", "superindo"]:
         r = con.execute(f"""select count(*), count(*) filter (where src='osm'),
             count(*) filter (where src='overture')
             from master where name ilike '%{kw}%'""").fetchone()
-        print(f"  {kw:12s} 計 {r[0]:>4,}  (osm {r[1]:>3,} / overture {r[2]:>3,})")
+        print(f"  {kw:12s} {r[0]:>4,}  (osm {r[1]:>3,} / overture {r[2]:>3,})")
+    print("\n  Note: '%superindo%' misses 'Super Indo' written with a space; see"
+          "\n  estimate_chain_truth.py for the chain-key version used in analysis.")
 
 
 if __name__ == "__main__":

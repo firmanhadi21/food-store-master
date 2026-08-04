@@ -25,9 +25,9 @@ dari Overture Maps, OpenStreetMap, dan Google Places, lalu jumlah sebenarnya die
 metode *capture–recapture* (penaksir Chapman). Lapisan satuan pendidikan disusun dari
 OpenStreetMap dan Dukcapil, dan kelengkapannya diuji terhadap jumlah terbitan Dapodik.
 Hasil menunjukkan **79,6% dari 949 minimarket berada dalam radius 200 m** dari satuan
-pendidikan, **87,7% berada dalam radius 500 m**, dan **47,5% dari 2.553 satuan pendidikan**
+pendidikan, **97,7% berada dalam radius 500 m**, dan **47,5% dari 2.553 satuan pendidikan**
 memiliki sedikitnya satu minimarket dalam radius 200 m. Median jarak satuan pendidikan ke
-minimarket terdekat adalah **207 m**, praktis berimpit dengan ambang yang diatur. Verifikasi
+minimarket terdekat adalah **210 m**, praktis berimpit dengan ambang yang diatur. Verifikasi
 kelengkapan menunjukkan bahwa gabungan Overture dan OpenStreetMap hanya memuat **42%** gerai
 berjaringan, dan ketidaklengkapan tersebut **tidak tersebar acak** melainkan bervariasi antara
 0,19 dan 0,79 antarkecamatan mengikuti formalitas komersial wilayah. Temuan ini menegaskan
@@ -215,9 +215,9 @@ pola kepadatan halaman usaha daring merupakan mekanisme yang dapat diduga.
 | Ukuran | Nilai |
 |---|---:|
 | Minimarket dalam radius 200 m (larangan jual) | **755 / 949 = 79,6%** |
-| Minimarket dalam radius 500 m (larangan iklan) | 832 / 949 = 87,7% |
+| Minimarket dalam radius 500 m (larangan iklan) | 927 / 949 = 97,7% |
 | Satuan pendidikan dengan ≥1 minimarket dalam 200 m | **1.213 / 2.553 = 47,5%** |
-| Median jarak satuan pendidikan ke minimarket terdekat | **207 m** |
+| Median jarak satuan pendidikan ke minimarket terdekat | **210 m** |
 | Kuartil 1 / Kuartil 3 | 122 m / 337 m |
 
 ---
@@ -227,7 +227,7 @@ pola kepadatan halaman usaha daring merupakan mekanisme yang dapat diduga.
 ### 4.1 Skala keterpaparan
 
 Empat dari lima minimarket di Kota Semarang berada di dalam radius yang penjualannya dilarang.
-Median jarak 207 m berimpit dengan ambang 200 m, sehingga sebaran ritel di kota ini secara
+Median jarak 210 m berimpit dengan ambang 200 m, sehingga sebaran ritel di kota ini secara
 praktis tidak selaras dengan asumsi keruangan yang mendasari PP 28/2024. Karena jarak diukur
 antartitik dan bukan dari batas persil satuan pendidikan, **angka sebenarnya lebih tinggi**.
 
