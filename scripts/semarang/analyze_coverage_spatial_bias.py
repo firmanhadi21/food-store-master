@@ -23,7 +23,7 @@ Overture は Semarang で meta 由来 98.1%＝Facebook ページの有無に依�
    相関が無ければランダム、あれば偏り。
 3. kecamatan（OSM admin_level=6）別にも集計して解釈しやすくする。
 
-出力: docs/semarang/検証_網羅率の空間的偏り.csv
+出力: docs/semarang/verify_coverage-spatial-bias.csv
 """
 import json
 import os
@@ -38,7 +38,7 @@ G = f"read_parquet('{D}/google_chains_semarang.parquet')"
 M = f"read_parquet('{D}/semarang_food_master.parquet')"
 POLY = f"{D}/semarang_boundary_poly.geojson"
 KEC = f"{D}/semarang_kecamatan.geojson"
-OUT = "docs/semarang/検証_網羅率の空間的偏り.csv"
+OUT = "docs/semarang/verify_coverage-spatial-bias.csv"
 
 CELL_KM = 2.0
 # Simpang Lima（市の中心）。周縁度の基準点

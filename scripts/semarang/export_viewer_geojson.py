@@ -95,8 +95,21 @@ dump(con.execute("""select name, level, n200, n500, dmin, lon, lat
                     from sc2 order by n200 desc""").fetchall(),
      "sekolah.geojson", ["nama", "jenjang", "n200", "n500", "dmin"])
 
-dump(con.execute("select name, src, lon, lat from st").fetchall(),
+# ★ 再配布可能なものだけを点として公開する（重要）
+#
+#   統計（n200/n500/median）は best-available 層＝Google Places を含む 949 点で計算するが、
+#   **Google Places の生データは再配布できない**（Google Maps Platform 規約は Content の
+#   保存・再配布を禁じ、限定的なキャッシュしか認めない）。派生した「学校から 200m 以内に
+#   何店ある」という数値は統計であって Content ではないので公開してよいが、
+#   **店舗の点そのものを GeoJSON で配るのは規約違反になる**。
+#
+#   → 表示用の点は Overture（CDLA-Permissive-2.0）と OSM（ODbL）由来だけに限定する。
+#     表示点数と統計の母数が食い違うので、UI にその旨を明記すること。
+dump(con.execute("""select name, src, lon, lat from st
+                    where src not like 'best:google%'""").fetchall(),
      "minimarket.geojson", ["nama", "sumber"])
+n_pub, = con.execute(
+    "select count(*) from st where src not like 'best:google%'").fetchone()
 
 # kecamatan 界（集計表示用）
 kec_path = f"{D}/semarang_kecamatan.geojson"
@@ -135,6 +148,8 @@ summary = {
     "total_minimarket": n_toko,
     "minimarket_dalam_200m": toko_in,
     "persen_minimarket": round(toko_in / n_toko * 100, 1),
+    # 表示できる点の数（統計の母数 total_minimarket より少ない。理由は上の注記）
+    "minimarket_ditampilkan": n_pub,
     "kecamatan": [{"nama": a[0], "sekolah": a[1], "kena": a[2],
                    "persen": round(a[2] / a[1] * 100, 1) if a[1] else None,
                    "toko": a[3]} for a in agg],

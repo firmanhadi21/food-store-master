@@ -32,7 +32,7 @@ Google Places API (New) で Alfamart / Indomaret の実店舗数を数え、マ�
   python3 scripts/semarang/fetch_chains_google_places.py --run
 
 出力: data/semarang/google_chains_semarang.parquet
-      docs/semarang/検証_チェーン実数_Google突合.csv
+      docs/semarang/verify_chain-counts-vs-google.csv
 """
 import json
 import os
@@ -47,7 +47,7 @@ D = "data/semarang"
 POLY = f"{D}/semarang_boundary_poly.geojson"
 CACHE = f"{D}/google_cache"
 OUT = f"{D}/google_chains_semarang.parquet"
-OUT_CSV = "docs/semarang/検証_チェーン実数_Google突合.csv"
+OUT_CSV = "docs/semarang/verify_chain-counts-vs-google.csv"
 
 def h(t):
     print(f"\n{chr(61)*72}\n{t}\n{chr(61)*72}")

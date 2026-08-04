@@ -1,40 +1,50 @@
 #!/usr/bin/env python3
-"""Semarang 版マスターの判定ルール。構築と検証の**両方から import する**
-（日本版 scripts/food_store_rules.py と同じ理由: 片方だけ直すとズレる）。
+"""Classification rules for the Semarang master. **Imported by both the builder and the
+verifier** (same reason as the Japan-side scripts/food_store_rules.py: if only one side is
+changed, the verifier keeps counting as false positives things the builder already removed).
 
-日本版との根本的な違い
-----------------------
-日本版は「Overture の category は信頼でき、名称判定は調剤薬局の切り分けだけ」だった。
-Semarang は逆で、**category が信頼できない**。実測（inspect_grocery_names.py）:
+How this differs fundamentally from the Japan version
+-----------------------------------------------------
+The Japan pipeline trusts Overture's `category` and uses name matching only to separate
+dispensing-only pharmacies. In Semarang the opposite holds: **`category` is not reliable.**
+Measured (see inspect_grocery_names.py):
 
-  - Overture Semarang の原典は **98.1% が meta**（日本は meta 39.8% / AllThePlaces 25.7%）。
-    Meta 由来＝Facebook ページの自己申告カテゴリなので業種分類が粗い。
-  - `convenience_store` 414 件に The Backyard Cafe / Victory Cell（携帯屋）が混入。
-  - `shopping` 851 件はゴミ箱だが、その中に Ada Swalayan（地場スーパー）等が埋もれている。
+  - Overture records in Semarang are **98.1% Meta-derived** (Japan: meta 39.8%,
+    AllThePlaces 25.7%). Meta-derived means self-declared Facebook page categories, so the
+    business classification is coarse.
+  - `convenience_store` (414 records) contains The Backyard Cafe, Victory Cell (a phone shop),
+    Art'Classico Vespa, and a computer repair shop.
+  - `shopping` (851) is a junk bucket, yet real food retail is buried in it —
+    Ada Swalayan (a local supermarket chain), Harmony Mart, Java Frozen Food.
+  - Brand fill rate: **Overture 27.8% vs OSM 83.8%.**
 
-→ **名称を主・category を弱い事前分布として使う**設計。日本版と正反対。
+=> Design: **name is primary, category is a weak prior.** The inverse of the Japan version.
 
-★ 第1版の失敗と対策（verify_semarang_master.py で検出。この記録を消さないこと）
-------------------------------------------------------------------------------
-素朴に `ilike '%語%'` で書いたところ、インドネシア語の一般語が大量に誤爆した:
+Failures in the first version, and the fixes (do not delete this record)
+-----------------------------------------------------------------------
+The same work the Japan version did by eyeballing drugstore chain names was needed here in
+Indonesian. **Naive substring matching misfires badly on common Indonesian words.** What
+actually happened:
 
-  - **griya**（＝家）を ADA/Griya 系スーパーのつもりで入れたら **136 件誤爆**。
-    実体は "Kost Harian Griya Tegalsari"（下宿）"Perumahan griya asri"（住宅地）
-    "Laundry Ngaliyan Griya Lestari"（洗濯屋）。**削除**。
-  - **matahari**（＝太陽）25 件。"Nasi Ayam Pojok Matahari"（飯屋）。**削除**。
-  - **yogya** 10 件。"Yogyakarta International Airport" が supermarket になった。**削除**。
-  - **mart** は部分一致で "**S**mart id collection" "Phone Mart" を拾う。→ 語境界 `\bmart\b` に変更。
-  - **toko**（＝店）だけでは食料品店に絞れない。"Toko Emas"（金）"Toko Sepeda"（自転車）
-    "Toko Listrik"（電気）"Toko Griya Springbed"（寝具）。→ **食料品を示す語との共起を必須化**。
-  - **pasar** を部分一致にすると "BPR Bank Pasar"（銀行）"Mie Pasar Baru"（麺屋）
-    "Lontong Tahu Blora Pasar Johar"（屋台）を拾う。→ **名称の先頭に限定** `^pasar\\b`。
+| token      | intent                | what it caught                                     | hits | fix |
+|------------|-----------------------|----------------------------------------------------|------|-----|
+| `griya`    | ADA/Griya supermarkets| Kost Harian Griya (boarding house), Perumahan griya |  136 | removed |
+|            |                       | asri (housing estate), Laundry Ngaliyan Griya       |      |         |
+| `matahari` | Matahari dept. store  | Nasi Ayam Pojok Matahari (a food stall)             |   25 | removed |
+| `yogya`    | Yogya supermarket     | **Yogyakarta International Airport**                |   10 | removed |
+| `mart`     | Harmony Mart etc.     | **S**mart id collection, Phone Mart                 |    — | word boundary `\bmart\b` |
+| `toko`     | shop                  | Toko Emas (gold), Toko Sepeda (bicycles),           | many | require co-occurrence |
+|            |                       | Toko Listrik (electrical), Toko Griya Springbed     |      | with a food word |
+| `pasar`    | traditional market    | BPR Bank Pasar (a bank), Mie Pasar Baru (noodle     | many | anchor to start |
+|            |                       | shop), Lontong Tahu Blora Pasar Johar (food stall)  |      | `^pasar\b` |
 
-教訓は日本版と同型: **一般語を含むブランド名リストは、必ず現物を目視してから確定する。**
+The lesson is the same shape as the Japan version: **a brand list containing common words must
+be confirmed against the actual data before it is trusted.**
 """
 
-# ---- チェーン辞書 ----
-# 一般語と衝突しない、固有名詞として一意な文字列だけを置く。
-# 「地場チェーンを拾いたい」欲で一般語を足すと上記の griya 事故が再発する。
+# ---- Chain dictionaries ----
+# Only strings that are unambiguous proper nouns. Adding a common word to "catch local
+# chains" is exactly how the `griya` incident above happened.
 CHAINS = {
     "minimarket": ["alfamart", "alfa mart", "indomaret", "indomart", "alfamidi",
                    "circle k", "lawson", "familymart", "family mart", "basmalah"],
@@ -44,25 +54,26 @@ CHAINS = {
                     "ranch market", "the food hall", "foodhall"],
 }
 
-# ---- 業態を名乗る語（チェーン名を知らなくても救える）----
-# 語境界付きで使う。単独で業態を確定できる強いシグナルのみ。
+# ---- Words naming the retail format itself ----
+# Used with word boundaries. Only signals strong enough to settle the format on their own,
+# so a chain name is not required.
 FORMAT_SUPERMARKET = ["swalayan", "toserba", "supermarket", "hypermarket", "serba ada"]
 FORMAT_MINIMARKET = ["minimarket", "mini market", "mart"]
 
-# ---- 明確に食料品店でないもの（除外）----
+# ---- Definitely not food retail (excluded) ----
 NON_FOOD = [
-    # サービス業
+    # services
     "optik", "konveksi", "laundry", "bengkel", "servis", "service", "reparation",
     "reparasi", "salon", "barbershop", "pangkas", "klinik", "apotek", "apotik",
     "dokter", "rumah sakit", "puskesmas", "notaris", "asuransi", "travel", "tour",
     "percetakan", "printing", "fotocopy", "photocopy", "sablon", "bordir",
     "advertising", "studio", "gym", "fitness", "rental", "workshop", "garage",
-    # 金融（"Bank Pasar" 対策）
+    # finance — catches "Bank Pasar"
     "bank", "bpr", "pegadaian", "koperasi", "leasing", "kredit",
-    # 宿泊・不動産（"Griya"/"Kost" 事故の再発防止）
+    # lodging and property — prevents the `griya` / `kost` failure recurring
     "hotel", "wisma", "kost", "kos ", "penginapan", "villa", "perumahan",
     "properti", "real estate", "residence", "apartemen", "guest house", "homestay",
-    # 非食品の物販
+    # non-food goods
     "toko emas", "toko mas", "emas ", "perhiasan", "sepeda", "listrik", "elektronik",
     "electronic", "komputer", "computer", "handphone", "ponsel", "konter", "counter",
     "pulsa", "springbed", "kasur", "furniture", "mebel", "meubel", "bangunan",
@@ -72,23 +83,25 @@ NON_FOOD = [
     "tekstil", "batik", "buku", "stationery", "mainan", "tamiya", "sticker",
     "packaging", "plastik", "kimia", "pupuk", "pakan", "pet shop", "petshop",
     "aquarium", "burung", "tanaman", "bunga", "florist", "obat ",
-    # 教育・その他
+    # education and other
     "les privat", "bimbel", "kursus", "sekolah", "kampus", "universitas",
     "airport", "bandara", "stasiun", "terminal", "agen bus", "ekspedisi",
     "cargo", "logistik", "gudang",
-    # 宗教用品・衣料（"Grosir Sajadah"＝礼拝マット卸 が toko_kelontong に入った）
+    # religious goods and clothing — "Grosir Sajadah" (prayer mats) had landed in kelontong
     "sajadah", "mukena", "umroh", "umrah", "hajj", "haji", "pakaian", "baju",
     "jilbab", "hijab", "songkok", "peci",
 ]
 
-# ---- 法人格を名乗る事業体（卸・製造・商社であって小売店舗ではない）----
-# "PT. Java Agritech" "Jawa Muna Agro PT" "Slamet Widodo. CV" が toko_kelontong に
-# 入っていた。消費者がアクセスする「店舗」ではないのでマスターから外す。
-# 語境界で判定しないと "PT" が語中に紛れる。
+# ---- Corporate entities (wholesale / manufacturing / trading, not retail outlets) ----
+# "PT. Java Agritech", "Jawa Muna Agro PT", "Slamet Widodo. CV" had landed in
+# toko_kelontong. These are not premises a consumer walks into, so they leave the master.
+# Must be matched on word boundaries or "PT" hits mid-word.
 B2B_ENTITY = ["pt", "cv", "ud", "tbk", "persero", "distributor", "importir",
               "eksportir", "manufaktur", "pabrik", "industri"]
 
-# ---- 飲食店（食料品「小売」ではない）----
+# ---- Prepared food (not food *retail*) ----
+# Indonesia has warung makan / warteg / rumah makan in enormous numbers; without this the
+# master fills up with eateries.
 EATERY = [
     "warung makan", "warteg", "warmindo", "rumah makan", "restoran", "restaurant",
     "resto", "cafe", "kafe", "coffee", "kopi", "ngopi", "kedai", "burjo",
@@ -102,8 +115,8 @@ EATERY = [
     "geblek", "popcorn", "snack &", "eatery",
 ]
 
-# ---- 食料品小売であることを示す語 ----
-# `toko`/`warung`/`agen` のような一般語は、これらとの**共起**を必須にする。
+# ---- Words indicating food retail ----
+# Generic words like `toko` / `warung` / `agen` require co-occurrence with one of these.
 FOOD_SIGNAL = [
     "sembako", "kelontong", "grosir", "beras", "sayur", "buah", "daging", "ikan",
     "telur", "minuman", "makanan", "frozen food", "frozen", "bahan kue",
@@ -116,10 +129,11 @@ FRESH = ["buah", "sayur", "daging", "ikan", "seafood", "rumah potong", "jagal",
 
 
 def _like(col, words):
-    """部分一致（NULL は false）。日本版の教訓どおり coalesce で包む。
+    """Substring match; NULL becomes false.
 
-    CLAUDE.md の落とし穴: `where not (…)` で NULL 行が黙って消える。
-    ilike が NULL を返すと not(NULL) が真にならず、名称欠損レコードが全部落ちる。
+    `coalesce` is mandatory. From the Japan-side CLAUDE.md: writing exclusions as
+    `where not (...)` silently drops NULL rows, because `ilike` returns NULL and
+    `not(NULL)` is not true — so every record with a missing name disappears.
     """
     if not words:
         return "false"
@@ -128,9 +142,9 @@ def _like(col, words):
 
 
 def _word(col, words):
-    """語境界つき一致。`mart` が `Smart` を拾う類の事故を防ぐ。
+    """Word-boundary match. Prevents the class of bug where `mart` matches `Smart`.
 
-    DuckDB は RE2 なので `\\b` が使える。`(?i)` で大文字小文字を無視。
+    DuckDB uses RE2, so `\\b` is available; `(?i)` makes it case-insensitive.
     """
     if not words:
         return "false"
@@ -139,19 +153,19 @@ def _word(col, words):
 
 
 def _starts(col, words):
-    """名称の先頭に限定した一致。`pasar` の誤爆対策。"""
+    """Match anchored to the start of the name. This is what makes `pasar` usable."""
     alt = "|".join(w.replace(" ", r"\s+") for w in words)
     return f"coalesce(regexp_matches(trim({col}), '(?i)^({alt})\\b'), false)"
 
 
 def classify_overture_sql(name_col="name", cat_col="category"):
-    """Overture レコードを共通カテゴリへ振る CASE 式。該当なしは NULL（＝除外）。
+    """CASE expression assigning an Overture record to a shared category; NULL means drop.
 
-    優先順は「信頼できるシグナルから先に」:
-      1. チェーン名（最強・一般語と衝突しないものだけ）
-      2. 除外語（非食品・飲食店）
-      3. 業態名 → 名称による分類
-      4. category の弱い事前分布
+    Ordered most-trustworthy signal first:
+      1. chain name (only unambiguous proper nouns)
+      2. exclusions (non-food, eateries, corporate entities)
+      3. format words, then other name-based rules
+      4. category, as a weak prior
     """
     mini_chain = _like(name_col, CHAINS["minimarket"])
     sup_chain = _like(name_col, CHAINS["supermarket"])
@@ -167,29 +181,29 @@ def classify_overture_sql(name_col="name", cat_col="category"):
 
     return f"""
     case
-      -- 1. チェーン名が最優先（"Indomaret Point Pemuda" が category='shopping' に
-      --    落ちている実例があるため、category より先に見る）
+      -- 1. Chain names win. "Indomaret Point Pemuda" is filed under category='shopping',
+      --    so the chain check has to run before any category logic.
       when {mini_chain} then 'minimarket'
       when {sup_chain}  then 'supermarket'
-      -- 2. 非食品・飲食店・法人格事業体は除外。
-      --    ここを通さないと Semarang は warung makan と卸売会社だらけになる
+      -- 2. Exclusions. Without these the Semarang master fills with warung makan
+      --    and wholesale companies.
       when {nonfood} then null
       when {eatery}  then null
       when {b2b}     then null
-      -- 3. 業態名。"ADA Fatmawati Pasar Swalayan" を pasar でなく supermarket にするため
-      --    pasar 判定より前に置く
+      -- 3. Format words. Placed before the pasar rule so that
+      --    "ADA Fatmawati Pasar Swalayan" is classed as supermarket, not pasar.
       when {sup_fmt}  then 'supermarket'
       when {mini_fmt} then 'minimarket'
       when {pasar}    then 'pasar'
-      -- 4. 生鮮は「一般語＋生鮮語」の共起で判定（"Toko Buah" 等）
+      -- 4. Fresh produce needs a generic shop word AND a fresh word ("Toko Buah").
       when {generic_shop} and {fresh} then 'fresh_food'
-      -- 5. **一般語＋食料品語は category より優先**する。
-      --    "Toko Sembako Bu Ratmi" が Overture category='supermarket' に入っており、
-      --    category を先に見ると個人商店がスーパーに化ける（第2版で実際に起きた）。
+      -- 5. **Generic word + food word beats category.** "Toko Sembako Bu Ratmi" carries
+      --    Overture category='supermarket'; checking category first turned a corner shop
+      --    into a supermarket (this actually happened in v2).
       when {generic_shop} and {food_sig} then 'toko_kelontong'
-      -- 6. category を弱い事前分布として使う（名称に手がかりが無い場合のみ）。
-      --    一般語だけで食料品語を伴わない名称（"Toko Renata"）は category を信用しない
-      --    ＝ Overture の category は meta 由来 98% で信頼できないため。
+      -- 6. Category as a weak prior, only where the name offers nothing. A generic word
+      --    with no food word ("Toko Renata") is dropped rather than trusted to category,
+      --    because Overture's category is 98% Meta-derived and unreliable.
       when {generic_shop} then null
       when {cat_col} = 'convenience_store' then 'minimarket'
       when {cat_col} = 'supermarket' then 'supermarket'
@@ -202,11 +216,11 @@ def classify_overture_sql(name_col="name", cat_col="category"):
 
 
 def classify_osm_sql(shop_col="shop", amenity_col="amenity", name_col="name"):
-    """OSM は人手タグなので**タグを信頼する**（Overture と逆）。
+    """OSM tags are hand-placed, so **trust the tags** — the opposite of Overture.
 
-    実測: shop=convenience のブランド付与率は OSM 83.8% / Overture 27.8%。
-    OSM Indonesia は HOT・地元マッパーの現地調査由来でタグ品質が高い。
-    名称ノイズ判定だけ最小限かける。
+    Measured: brand fill rate on convenience stores is OSM 83.8% vs Overture 27.8%.
+    OSM Indonesia is largely HOT and local-mapper survey work, so tag quality is high.
+    Only a minimal name-based noise filter is applied.
     """
     nonfood = _like(name_col, NON_FOOD)
     eatery = _like(name_col, EATERY)

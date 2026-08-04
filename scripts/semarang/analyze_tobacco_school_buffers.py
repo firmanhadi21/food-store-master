@@ -29,7 +29,7 @@ Dukcapil の寄与は TK/PAUD（+480 校）に限られ、集合 C にのみ効�
 
 入力: data/semarang/semarang_food_master.parquet
       data/semarang/schools_semarang_combined.parquet
-出力: docs/semarang/検証_学校周辺タバコ販売_バッファ.csv
+出力: docs/semarang/verify_tobacco-school-buffers.csv
 """
 import os
 
@@ -44,7 +44,7 @@ _MASTER = f"{D}/semarang_food_master.parquet"
 _SRC = _BEST if os.path.exists(_BEST) else _MASTER
 M = f"read_parquet('{_SRC}')"
 S = f"read_parquet('{D}/schools_semarang_combined.parquet')"
-OUT = "docs/semarang/検証_学校周辺タバコ販売_バッファ.csv"
+OUT = "docs/semarang/verify_tobacco-school-buffers.csv"
 
 # PP 28/2024 の2つの半径
 R_SALES = 200

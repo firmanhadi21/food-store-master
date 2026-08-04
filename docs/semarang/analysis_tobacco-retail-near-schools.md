@@ -285,7 +285,7 @@ against distance.
 ## 3. Results
 
 Reproduce with `python3 scripts/semarang/analyze_tobacco_school_buffers.py`
-→ `docs/semarang/検証_学校周辺タバコ販売_バッファ.csv`
+→ `docs/semarang/verify_tobacco-school-buffers.csv`
 
 > **Outlet layer: `semarang_outlets_best.parquet`** (`build_outlets_best_available.py`) —
 > minimarkets from the Google-based best-available chain layer (**949**, ≈85% of estimated truth)

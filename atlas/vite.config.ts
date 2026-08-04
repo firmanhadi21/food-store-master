@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 // base はリポジトリ名（GitHub Pages のプロジェクトページ）。独自ドメイン
 // （Undip のサブドメイン等）に移す場合は "/" にする。
 export default defineConfig({
-  base: "/food-store-master/",
+  base: "/atlas-ruang-publik/",
   build: {
     rollupOptions: {
       input: {

@@ -15,7 +15,7 @@ Dapodik は座標を公開していない（Verval SP 側・要認証）が、**
   paud   /pendidikan/paud/030000/1    → 同 TK・KB・TPA・SPS
   ※ 個別校の一覧（level 3）は JS 描画で静的取得できない。県レベルの集計表を使う。
 
-出力: docs/semarang/検証_学校網羅性_Dapodik突合.csv
+出力: docs/semarang/verify_school-completeness-vs-dapodik.csv
 """
 import os
 
@@ -23,7 +23,7 @@ import duckdb
 
 D = "data/semarang"
 S = f"read_parquet('{D}/schools_semarang_combined.parquet')"
-OUT = "docs/semarang/検証_学校網羅性_Dapodik突合.csv"
+OUT = "docs/semarang/verify_school-completeness-vs-dapodik.csv"
 
 # Dapodik 公表件数（Kota Semarang, wilayah code 036300）
 DAPODIK = {

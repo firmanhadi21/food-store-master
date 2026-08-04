@@ -26,7 +26,7 @@
   - ※ places.businessStatus を field mask に入れ忘れたため**閉店店舗は除外できていない**。
     再取得すればさらに精度が上がる（約$8）。
 
-出力: docs/semarang/検証_チェーン真値推定.csv
+出力: docs/semarang/verify_chain-truth-estimate.csv
       data/semarang/chains_best_available.parquet   （現時点で最良の統合レイヤ）
 """
 import os
@@ -36,7 +36,7 @@ import duckdb
 D = "data/semarang"
 G = f"read_parquet('{D}/google_chains_semarang.parquet')"
 M = f"read_parquet('{D}/semarang_food_master.parquet')"
-OUT_CSV = "docs/semarang/検証_チェーン真値推定.csv"
+OUT_CSV = "docs/semarang/verify_chain-truth-estimate.csv"
 OUT_LAYER = f"{D}/chains_best_available.parquet"
 
 CHAINS = ["Alfamart", "Indomaret"]

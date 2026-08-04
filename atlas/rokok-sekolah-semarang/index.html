@@ -42,11 +42,24 @@
       </section>
 
       <section class="block">
+        <h2>Peta dasar</h2>
+        <div class="seg" id="basemap" role="radiogroup" aria-label="Peta dasar">
+          <button type="button" data-bm="terang" class="on" role="radio"
+            aria-checked="true">Terang</button>
+          <button type="button" data-bm="detail" role="radio"
+            aria-checked="false">Detail</button>
+          <button type="button" data-bm="satelit" role="radio"
+            aria-checked="false">Satelit</button>
+        </div>
+        <p class="hint" id="bm-note"></p>
+      </section>
+
+      <section class="block">
         <h2>Lapisan peta</h2>
         <label class="toggle"><input type="checkbox" id="l-sekolah" checked />
           <span>Satuan pendidikan</span></label>
         <label class="toggle"><input type="checkbox" id="l-toko" checked />
-          <span>Minimarket</span></label>
+          <span>Minimarket <span id="toko-n" class="dim"></span></span></label>
         <label class="toggle"><input type="checkbox" id="l-kec" />
           <span>Batas kecamatan</span></label>
       </section>
@@ -76,6 +89,12 @@
             jumlah sebenarnya. Angka di sini adalah <b>batas bawah</b>.</li>
           <li><b>Pesantren belum dipetakan tersendiri</b> (sebagian masuk sebagai madrasah),
             sehingga angka sebenarnya lebih tinggi.</li>
+          <li><b>Titik minimarket yang ditampilkan lebih sedikit daripada yang dihitung.</b>
+            Perhitungan memakai lapisan terlengkap (949 gerai, sebagian bersumber dari
+            Google Places), tetapi ketentuan lisensi Google tidak mengizinkan penerbitan
+            ulang titik-titiknya. Karena itu peta hanya menampilkan gerai yang bersumber
+            dari OpenStreetMap dan Overture Maps, yang boleh dibagikan kembali.
+            <b>Angka statistik tetap dihitung dari lapisan penuh.</b></li>
           <li><b>Warung dan toko kelontong belum terhitung.</b> Peta ini hanya memuat
             minimarket berjaringan. Warung yang menjual rokok jauh lebih banyak dan
             tidak tersedia di data mana pun — perlu survei lapangan.</li>

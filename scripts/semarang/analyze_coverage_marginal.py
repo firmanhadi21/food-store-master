@@ -15,7 +15,7 @@
 Kota Semarang は南部（Gunungpati / Mijen）に人口希薄な丘陵を抱えるため、
 面積ベースは圏外率を過大に出す。人口加重は次段（Podes / WorldPop）の課題。
 
-出力: docs/semarang/検証_カバレッジ限界寄与.csv
+出力: docs/semarang/verify_coverage-marginal-contribution.csv
 """
 import os
 
@@ -24,7 +24,7 @@ import duckdb
 D = "data/semarang"
 M = f"read_parquet('{D}/semarang_food_master.parquet')"
 POLY = f"{D}/semarang_boundary_poly.geojson"
-OUT = "docs/semarang/検証_カバレッジ限界寄与.csv"
+OUT = "docs/semarang/verify_coverage-marginal-contribution.csv"
 
 GRID_M = 250       # 判定格子。500m 閾値の半分
 THRESHOLDS = [300, 500, 1000]
