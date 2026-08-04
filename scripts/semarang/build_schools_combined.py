@@ -41,7 +41,21 @@ OSM = f"{D}/osm_schools_semarang.parquet"
 DUK = f"{D}/dukcapil_schools_semarang.parquet"
 OUT = f"{D}/schools_semarang_combined.parquet"
 
-DEDUP_M = 100  # 100m。同一施設の座標差はこの程度に収まる
+# ★ 学校は 150m。店舗（100m）より緩くする。
+#
+#   理由は**施設の性質**であって Dapodik に合わせたからではない: 店舗は間口が数mの点だが、
+#   学校は敷地（校庭・複数棟）を持つため、ソースごとに代表点の取り方が違う
+#   （門／校舎／敷地重心）。同一園でも 100〜200m ずれる。
+#
+#   実測（verify_school_completeness.py）: OSM×Dukcapil の TK で、100m では一致 0 件だが
+#   150m で 128 件、200m で 239 件が一致する。100m のままだと同一園が二重計上され、
+#   TK が 1,590 件＝Dapodik 公表 1,439 件の 110.5% に膨らんでいた。
+#   150m にすると 1,462 件（101.6%）となり公表値とほぼ一致する。
+#   ※ 公表値との一致は**裏付け**であって根拠ではない。根拠は上記の代表点のばらつき。
+#
+#   なお SD/SMP/SMA は Dukcapil が Semarang に1件も持たないため、この値を変えても
+#   集合A には影響しない（影響するのは TK/PT/SLB のみ）。
+DEDUP_M = 150
 
 con = duckdb.connect()
 con.execute("INSTALL spatial; LOAD spatial;")

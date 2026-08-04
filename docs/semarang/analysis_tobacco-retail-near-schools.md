@@ -103,24 +103,62 @@ carries no ODbL inheritance.
 > **Therefore Dukcapil contributes nothing to SD/SMP/SMA in Semarang.** Its value is confined to
 > TK/PAUD and higher education.
 
-**Combined layer** (`scripts/semarang/build_schools_combined.py`) — union, deduped at 100 m and
+**Combined layer** (`scripts/semarang/build_schools_combined.py`) — union, deduped at 150 m and
 **only within the same level** (TK and SD share sites routinely; merging on proximity alone would
 destroy real facilities, the same failure avoided in the store master with Alfamart/Indomaret):
 
 | Level | Combined | osm | dukcapil |
 |---|---:|---:|---:|
-| TK / PAUD | 1,590 | 1,110 | **+480** |
+| TK / PAUD | 1,462 | 1,110 | **+352** |
 | SD / MI | 507 | 507 | 0 |
 | PT (higher ed) | 270 | 0 | 270 |
 | SMA / SMK / MA | 153 | 152 | 1 |
 | SMP / MTs | 145 | 145 | 0 |
-| unknown | 175 | 103 | 72 |
+| unknown | 172 | 103 | 69 |
 | informal / SLB | 56 | 0 | 56 |
-| **Total** | **2,896** | 2,017 | 879 |
+| **Total** | **2,765** | 2,017 | 748 |
 
-**Consequence for this analysis:** school set **A (SD/SMP/SMA) is effectively OSM-only**, so
-**its completeness remains unvalidated** — the open problem in §6. Dukcapil's contribution lands
-entirely in set C.
+**Consequence:** school set **A (SD/SMP/SMA) is effectively OSM-only**. Its completeness is
+measured in §2.5.
+
+> **Dedup radius is 150 m for schools, not the 100 m used for stores.** A shop is a few metres of
+> frontage; a school is a compound, so sources pick different reference points (gate / building /
+> site centroid) and the same institution lands 100–200 m apart. Measured: OSM×Dukcapil TK pairs
+> matching at 100 m = **0**, at 150 m = **128**, at 200 m = **239**. At 100 m the same kindergarten
+> was double-counted, inflating TK to 1,590 (110.5% of Dapodik's published 1,439); at 150 m it is
+> 1,462 (101.6%). The published figure **corroborates** the fix — the justification is the
+> reference-point spread, not matching the target.
+
+### 2.5 School completeness vs Dapodik — set A is at 76%
+
+Dapodik withholds coordinates but **publishes counts**, and completeness needs no coordinates.
+Same two-layer principle used for the stores: position from POI, quantity from official
+statistics. Source: `referensi.data.kemendikdasmen.go.id`, Kota Semarang (wilayah 036300),
+retrieved 2026-08-04 (`scripts/semarang/verify_school_completeness.py`).
+
+| Level | Layer | Dapodik | Coverage |
+|---|---:|---:|---:|
+| SD (incl. MI) | 507 | 615 | 82.4% |
+| **SMP (incl. MTs)** | 145 | 244 | **59.4%** ← worst |
+| SMA (incl. SMK) | 153 | 195 | 78.5% |
+| TK / PAUD (incl. KB, TPA, SPS) | 1,462 | 1,439 | 101.6% |
+| SLB | 16 | 12 | 133% |
+| **Set A (SD+SMP+SMA)** | **805** | **1,054** | **76.4%** |
+
+**~249 schools are missing from set A**, and SMP is the weakest level by a wide margin.
+
+> **Effect on the headline (§3.0): direction unknown.** The 49.4% school-denominated figure is
+> computed over 805 schools when 1,054 exist. Which way it moves depends on where the missing
+> schools are:
+> - concentrated in peripheral areas → fewer nearby outlets → **49.4% is overstated**
+> - small private/madrasah schools inside dense kampung → more nearby outlets → **understated**
+>
+> **Resolvable:** Dapodik publishes per-school listings (NPSN + address) at level 3 of the same
+> portal. Geocoding those addresses would close the gap — the listing pages are JS-rendered, so
+> they need a browser or the address strings pulled another way.
+
+The store layer is at ~85% and the school layer at ~76%, so **schools are now the weaker input**,
+which is a reversal from earlier in this document.
 
 > **Classifier bug worth recording.** The first version used substring matching and put
 > `SD Negeri Mangunharjo` in SMA, because `MAN` (Madrasah Aliyah Negeri) matched inside
@@ -285,9 +323,9 @@ materially changes the answer:
 |---|---:|---:|---:|---:|---:|
 | **A** SD/SMP/SMA | 805 | 447 / 949 | **47.1%** | 93 / 186 | 50.0% |
 | **B** SMP/SMA only | 298 | 217 / 949 | 22.9% | 40 / 186 | 21.5% |
-| **C** incl. TK/PAUD + all | 2,896 | 782 / 949 | **82.4%** | 145 / 186 | 78.0% |
+| **C** incl. TK/PAUD + all | 2,765 | 782 / 949 | **82.4%** | 145 / 186 | 78.0% |
 
-Set C rose from 73.4% to 84.7% once Dukcapil's additional 480 TK/PAUD were included — the
+Set C figures include Dukcapil's additional 352 TK/PAUD — the
 interpretation question in §6.1 is therefore worth even more than it first appeared. Sets A and B
 are unchanged, because Dukcapil adds no SD/SMP/SMA in Semarang.
 
@@ -310,7 +348,7 @@ Schools with a minimarket within 200 m:
 |---|---:|
 | A SD/SMP/SMA | 398 / 805 = **49.4%** |
 | B SMP/SMA | 159 / 298 = 53.4% |
-| C all levels | 1,416 / 2,896 = 48.9% |
+| C all levels | 1,350 / 2,765 = 48.8% |
 
 Notably **stable at ~33% across all three definitions** — the share of schools with a minimarket
 within 200 m does not depend on which levels are counted, even though the share of *outlets*
