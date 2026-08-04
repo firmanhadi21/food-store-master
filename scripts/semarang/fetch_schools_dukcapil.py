@@ -1,32 +1,42 @@
 #!/usr/bin/env python3
 """
-Kota Semarang の学校位置を **Dukcapil（Kemendagri）の ArcGIS FeatureServer** から取得する。
+Fetch school locations for Kota Semarang from the **Dukcapil (Kemendagri) ArcGIS
+FeatureServer**.
 
-なぜこれが本命か
-----------------
-fetch_schools_semarang.py の docstring に「Dapodik は座標を公開していない」と書いたが、
-**それは Dapodik 本体の話で、Dukcapil が座標付きで再公開している**ことが判明した。
+Why this is the source that matters
+-----------------------------------
+fetch_schools_semarang.py notes that Dapodik does not publish coordinates. That is true of
+Dapodik itself — but **Dukcapil republishes the same Kemendikbud data with coordinates**:
 
   https://gis.dukcapil.kemendagri.go.id/arcgis/rest/services/Hosted/
-    Fasilitas_Pendidikan/FeatureServer/1        （レイヤ名 "education"）
+    Fasilitas_Pendidikan/FeatureServer/1        (layer "education")
 
-  - `source` 列は "Website Kemendikbud" / "Website Kemdikbud" / "Website Pindai Dikti"
-    ＝ **Kemendikbud（Dapodik）由来であって OSM 由来ではない**。
-    → OSM と独立したソースなので、網羅性の相互検証に使える（ODbL の継承も及ばない）。
-  - 全国 448,810 件。Semarang bbox で 3,078 件（OSM の 2,077 件より約 48% 多い）。
-  - `tags` 列が "Education;School;Kindergarden" のように**校種を構造化**して持つ。
-    OSM で校名パースに頼っていた段階判定（MAN 誤爆事故を起こした箇所）が不要になる。
+  - The `source` column reads "Website Kemendikbud" / "Website Kemdikbud" /
+    "Website Pindai Dikti" — i.e. **Kemendikbud-derived, not OSM-derived**. That makes it a
+    genuine cross-validation source, and it carries no ODbL inheritance.
+  - 448,810 records nationally; 3,078 inside the Semarang bbox (about 48% more than OSM).
+  - The `tags` column carries a structured level such as "Education;School;Kindergarden",
+    removing the need to parse school names — the step that produced the MAN/Mangunharjo
+    misclassification in the OSM path.
 
-API の作法
-----------
-  - `maxRecordCount` = 2000。**resultOffset でページングする**。
-  - サービスの既定 SR は 3857 なので `outSR=4326` を明示して緯度経度で受け取る。
-  - bbox 検索は `inSR=4326` を付ければ WGS84 の envelope をそのまま渡せる。
+** Its coverage is uneven, and this was verified rather than assumed:
+  - within the Semarang bbox, tags='Elementary School' returns 0 and 'Junior High School'
+    returns 0, while nationally they hold 54,159 and 93,714 — regionally incomplete
+  - 'Senior High School' does not exist as a tag anywhere nationally
+  => **Dukcapil contributes nothing to SD/SMP/SMA here.** Its value is TK/PAUD and higher
+     education.
 
-出力: data/semarang/dukcapil_schools_semarang.parquet
+API notes
+---------
+  - `maxRecordCount` is 2000, so **paginate with resultOffset**.
+  - The service's native SR is 3857; pass `outSR=4326` to receive lat/lon.
+  - A WGS84 envelope can be passed directly if `inSR=4326` is set.
+
+Output: data/semarang/dukcapil_schools_semarang.parquet
 """
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -43,8 +53,8 @@ BBOX = {"xmin": 110.20, "ymin": -7.25, "xmax": 110.56, "ymax": -6.90,
         "spatialReference": {"wkid": 4326}}
 PAGE = 2000
 
-# tags（"Education;School;Kindergarden" 形式）→ 段階。
-# 名称パースより信頼できるので**こちらを優先**する。
+# tags ("Education;School;Kindergarden" style) -> level.
+# **Preferred over name parsing**, which is where the OSM path went wrong.
 TAG_LEVEL = {
     "kindergarden": "TK", "kindergarten": "TK", "playgroup": "TK",
     "elementary": "SD", "primary": "SD",
@@ -78,21 +88,20 @@ def fetch_page(offset):
         except Exception as e:  # noqa: BLE001
             print(f"    retry {attempt + 1}: {e}")
             time.sleep(5)
-    raise SystemExit(f"取得失敗: offset={offset}")
+    raise SystemExit(f"fetch failed at offset={offset}")
 
 
 def level_from_tags(tags, name):
-    """tags を第一、校名トークンを第二の手がかりに段階を決める。
+    """Use tags first, school-name tokens only as a fallback.
 
-    校名パースは "SD Negeri **Man**gunharjo" が略号 MAN に誤爆する事故を起こしたので
-    （fetch_schools_semarang.py 参照）、構造化された tags があるならそちらを使う。
+    Name parsing misfiled "SD Negeri **Man**gunharjo" as SMA (see
+    fetch_schools_semarang.py), so structured tags take priority wherever present.
     """
     t = (tags or "").lower()
     for key, lv in TAG_LEVEL.items():
         if key in t:
             return lv
-    # tags が曖昧なときだけ校名トークンに落とす（部分一致は使わない）
-    import re
+    # Fall back to name tokens only when tags are ambiguous — never substring matching
     toks = {x for x in re.split(r"[^A-Z0-9]+", (name or "").upper()) if x}
     for lv, s in [("TK", {"TK", "TKIT", "PAUD", "RA", "KB", "TPA", "BA"}),
                   ("SMA", {"SMA", "SMAN", "SMK", "SMKN", "MA", "MAN", "MAS", "SMAS", "SMKS"}),
@@ -125,7 +134,7 @@ def main():
         if not data.get("exceededTransferLimit") or not feats:
             break
         offset += PAGE
-    print(f"\n取得 {len(rows):,} 件（bbox）")
+    print(f"\nfetched {len(rows):,} (bbox)")
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -134,33 +143,32 @@ def main():
     con.execute("""create table s as select * from r
       where exists (select 1 from kota k where ST_Contains(k.geom, ST_Point(lon, lat)))""")
     n, = con.execute("select count(*) from s").fetchone()
-    print(f"Kota Semarang 市域内 {n:,} 件")
+    print(f"within Kota Semarang: {n:,}")
     con.execute(f"copy s to '{OUT}' (FORMAT parquet)")
-    print(f"出力: {OUT}")
+    print(f"wrote: {OUT}")
 
-    print("\n=== 段階別 ===")
+    print("\n=== by level ===")
     for row in con.execute(
             "select level, count(*) c from s group by 1 order by c desc").fetchall():
         print(f"  {row[0]:10s} {row[1]:>5,}")
 
-    print("\n=== tags の実値（上位）===")
+    print("\n=== actual tag values (top) ===")
     for row in con.execute(
             "select tags, count(*) c from s group by 1 order by c desc limit 12").fetchall():
         print(f"  {str(row[0])[:52]:54s} {row[1]:>5,}")
 
-    print("\n=== source 別 ===")
+    print("\n=== by source ===")
     for row in con.execute(
             "select source, count(*) c from s group by 1 order by c desc").fetchall():
         print(f"  {str(row[0]):28s} {row[1]:>5,}")
 
-    # OSM との突合（独立ソースなので網羅性の相互検証になる）
+    # Cross-check against OSM. The sources are independent, so the overlap is meaningful.
     osm = f"{OUT_DIR}/osm_schools_semarang.parquet"
     if os.path.exists(osm):
-        print("\n=== OSM との比較（市域内）===")
+        print("\n=== compared with OSM (within city limits) ===")
         con.execute(f"create table o as select * from read_parquet('{osm}')")
         no, = con.execute("select count(*) from o").fetchone()
-        print(f"  Dukcapil {n:,} 件 / OSM {no:,} 件")
-        # 100m 以内に相手がいるか（≒同一施設）
+        print(f"  Dukcapil {n:,} / OSM {no:,}")
         con.execute("""create table pair as
           select count(*) filter (where hit) m, count(*) t from (
             select exists (select 1 from o
@@ -168,8 +176,9 @@ def main():
                   + power((o.lon-s.lon)*cos(radians(s.lat)),2)) <= 100) hit
             from s)""")
         m, t = con.execute("select m, t from pair").fetchone()
-        print(f"  Dukcapil のうち OSM に 100m 以内の対応あり: {m:,}/{t:,} = {m/t*100:.1f}%")
-        print(f"  → Dukcapil 独自（OSM に無い）: {t - m:,} 件")
+        print(f"  Dukcapil records with an OSM counterpart within 100 m: "
+              f"{m:,}/{t:,} = {m/t*100:.1f}%")
+        print(f"  -> Dukcapil-only (absent from OSM): {t - m:,}")
 
 
 if __name__ == "__main__":
