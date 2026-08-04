@@ -177,6 +177,71 @@ unmatched at 100 m), so a three-source union floors the true count near
 with that field (≈ US$8) would tighten the estimate and **should be done before publishing these
 figures**.
 
+### 2.4 ⚠️ The ~50% miss is **not** spatially random — the shares in §3 are unsafe
+
+If the missing half were randomly distributed, only the absolute counts in §3 would need
+correcting and the *shares* would survive. Tested directly
+(`scripts/semarang/analyze_coverage_spatial_bias.py`).
+
+**Distance from the centre says "random" — but that is the wrong covariate:**
+
+| Distance from Simpang Lima | Google | Master | Coverage |
+|---|---:|---:|---:|
+| 0–2 km | 83 | 50 | 0.60 |
+| 2–4 km | 159 | 90 | 0.57 |
+| 4–6 km | 176 | 80 | 0.45 |
+| 6–8 km | 131 | 69 | 0.53 |
+| 8–12 km | 165 | 77 | 0.47 |
+| 12 km+ | 70 | 30 | 0.43 |
+
+`corr(distance, coverage) = −0.140`, `corr(cell store count, coverage) = +0.092` (n=84 cells).
+Both below the |r| < 0.2 threshold set in advance — which would say "effectively random."
+
+**The kecamatan breakdown overturns that:**
+
+| kecamatan | Google | Master | Coverage |
+|---|---:|---:|---:|
+| Tugu | 26 | 5 | **0.19** |
+| Gayamsari | 26 | 7 | 0.27 |
+| Semarang Timur | 28 | 8 | 0.29 |
+| Mijen | 57 | 21 | 0.37 |
+| Ngaliyan | 63 | 25 | 0.40 |
+| Genuk | 39 | 16 | 0.41 |
+| Pedurungan | 86 | 36 | 0.42 |
+| Gunung Pati | 38 | 18 | 0.47 |
+| Gajahmungkur | 36 | 18 | 0.50 |
+| Semarang Barat | 75 | 41 | 0.55 |
+| Candisari | 34 | 19 | 0.56 |
+| Semarang Selatan | 41 | 23 | 0.56 |
+| Tembalang | 71 | 42 | 0.59 |
+| Banyumanik | 91 | 63 | 0.69 |
+| Semarang Utara | 25 | 18 | 0.72 |
+| Semarang Tengah | 48 | 38 | **0.79** |
+
+**A 4× spread — 0.19 to 0.79.** The correlation test returned "random" only because
+*distance from centre* does not explain the variation. Semarang Utara (coastal, 0.72) and
+Semarang Timur (inner-east, 0.29) sit at opposite ends despite comparable distances.
+
+**Plausible driver:** the pattern tracks commercial formality and mapping attention rather than
+geography. Best covered are the CBD (Semarang Tengah), the old town/port (Semarang Utara), and
+the affluent/university south (Banyumanik, Tembalang) — all areas with dense Facebook business
+presence and active OSM mapping. Worst covered is industrial Tugu. Given Overture here is
+**98.1% Meta-derived**, coverage inheriting Facebook-page density is the expected failure mode,
+not a surprising one.
+
+> **Consequence: the shares in §3 are biased, not merely scaled.** Aggregating across kecamatan
+> over-weights well-covered areas. Schools in Tugu, Gayamsari, and Semarang Timur will appear to
+> have far fewer nearby outlets than they do.
+>
+> **Do not report the §3 shares without one of:** (a) per-kecamatan coverage correction,
+> (b) restricting analysis to kecamatan above a coverage threshold, or (c) replacing the outlet
+> layer with field survey in the sampled areas.
+
+**Methodological note worth keeping:** a pre-registered correlation threshold returned the wrong
+answer because the covariate was wrong. The stratified breakdown caught what the correlation
+missed. Test spatial bias against **administrative units and plausible mechanisms**, not only
+against distance.
+
 ---
 
 ## 3. Results
@@ -246,11 +311,11 @@ median is marginally higher than shown):
    **Report as "outlets within the restricted radius", never as "violations".**
 3. **School coordinates are OSM and unvalidated.** Validate a sample against imagery before
    publication; check completeness against Dapodik counts.
-4. **Every outlet row is a floor — including minimarket.** §2.3 measured chain coverage at ~50%,
-   so the absolute counts in §3.1–3.2 are roughly **half of reality**. The *shares* may survive if
-   the missing stores are spatially random, but **that is now an assumption requiring a check**,
-   not a given: if Overture and OSM miss stores preferentially in peripheral areas, the shares are
-   biased too. Testing it needs the Google layer compared against the master **by kecamatan**.
+4. **Every outlet row is a floor — including minimarket — and the shares are biased.**
+   §2.3 measured chain coverage at ~50%, so absolute counts are roughly **half of reality**.
+   §2.4 then showed the miss is **not spatially random** (kecamatan coverage ranges 0.19–0.79),
+   so the *shares* are biased too, not merely scaled. **§3 must not be reported without the
+   correction described in §2.4.**
 5. **Transition provisions unchecked.** Whether PP 28/2024 grants existing outlets a compliance
    period is not established here and would change the interpretation of §3.1 entirely.
 
