@@ -8,9 +8,9 @@
 > 移植し、そこから派生した **PP 28/2024（学校周辺のタバコ販売・広告規制）の適合状況の
 > 可視化**。
 >
-> - 公開マップ: **[Ritel Rokok di Sekitar Sekolah — Kota Semarang](https://firmanhadi21.github.io/food-store-master/)**
+> - 公開サイト: **[Atlas Ruang Publik](https://firmanhadi21.github.io/food-store-master/)** — 第1studi は「Ritel Rokok di Sekitar Sekolah, Kota Semarang」
 > - コード: `scripts/semarang/` · ドキュメント: **[`docs/semarang/`](docs/semarang/)**
-> - ビューア: `viewer-semarang/`（fork 元の `viewer/` は日本専用のためデプロイしていない）
+> - 公開サイト: `atlas/`（**Atlas Ruang Publik**。fork 元の `viewer/` は日本専用のためデプロイしていない）
 >
 > 移植の要点は「日本版の中核的な設計判断が3つとも逆転する」こと
 > （和集合を採る／category でなく名称で分類する／pasar が主役）。

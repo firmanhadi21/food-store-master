@@ -18,9 +18,9 @@ output/
 # Semarang 公開マップの配信データはコミットする（GitHub Actions のビルド入力になるため）。
 # 上の data/ と *.geojson に食われるので二段で打ち消す。git は除外された**ディレクトリ**の
 # 中身を再包含できないので、先にディレクトリを外してからファイルを外す。
-!viewer-semarang/public/data/
-!viewer-semarang/public/data/*.geojson
-!viewer-semarang/public/data/*.json
+!atlas/public/data/
+!atlas/public/data/*.geojson
+!atlas/public/data/*.json
 
 # Python
 __pycache__/

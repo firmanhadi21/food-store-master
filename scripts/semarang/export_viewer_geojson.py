@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-公開マップ用の GeoJSON を書き出す（viewer-semarang/public/data/）。
+公開マップ用の GeoJSON を書き出す（atlas/public/data/）。
 
 PMTiles を使わない理由
 ----------------------
@@ -46,7 +46,7 @@ import os
 import duckdb
 
 D = "data/semarang"
-OUT = "viewer-semarang/public/data"
+OUT = "atlas/public/data"
 R_SALES, R_ADS = 200, 500
 
 con = duckdb.connect()

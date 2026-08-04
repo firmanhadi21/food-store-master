@@ -1,10 +1,10 @@
-name: Deploy Semarang map to GitHub Pages
+name: Deploy Atlas Ruang Publik to GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
-      - "viewer-semarang/**"
+      - "atlas/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -30,15 +30,15 @@ jobs:
       #   **デプロイしない**。fork 元の base が /japan-food-store-master/ 固定で
       #   このリポジトリ名（food-store-master）では 404 になるため。
       #   コード自体は本家との差分を追えるよう残してある。
-      - name: Build Semarang map
-        working-directory: viewer-semarang
+      - name: Build Atlas Ruang Publik
+        working-directory: atlas
         run: |
           npm ci
           npm run build
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: viewer-semarang/dist
+          path: atlas/dist
 
   deploy:
     needs: build
