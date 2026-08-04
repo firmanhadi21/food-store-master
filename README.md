@@ -1,3 +1,25 @@
+> ## 🇮🇩 このリポジトリは fork です
+>
+> **fork 元**: [shiwaku/japan-food-store-master](https://github.com/shiwaku/japan-food-store-master)
+> — 農水省「食料品アクセス」定義に準拠した日本全国の食料品店 POI マスター。
+> 以下の README とドキュメントの大半は fork 元のもので、日本を対象とした内容。
+>
+> **この fork で追加したもの**: 同じパイプラインを **インドネシア・Kota Semarang** に
+> 移植し、そこから派生した **PP 28/2024（学校周辺のタバコ販売・広告規制）の適合状況の
+> 可視化**。
+>
+> - 公開マップ: **[Ritel Rokok di Sekitar Sekolah — Kota Semarang](https://firmanhadi21.github.io/food-store-master/)**
+> - コード: `scripts/semarang/` · ドキュメント: **[`docs/semarang/`](docs/semarang/)**
+> - ビューア: `viewer-semarang/`（fork 元の `viewer/` は日本専用のためデプロイしていない）
+>
+> 移植の要点は「日本版の中核的な設計判断が3つとも逆転する」こと
+> （和集合を採る／category でなく名称で分類する／pasar が主役）。
+> 詳細と実測値は [`docs/semarang/`](docs/semarang/) を参照。
+>
+> 作成: Firman Hadi（Teknik Geodesi, Universitas Diponegoro）
+
+---
+
 # 全国 食料品店マスター（japan-food-store-master）
 
 農水省「[食料品アクセス](https://www.maff.go.jp/j/shokusan/eat/access_genjo.html)」（[食料品アクセスマップ／農林水産政策研究所](https://www.maff.go.jp/primaff/seika/fsc/faccess/a_map.html)による食料品アクセス困難人口の推計）の定義に準拠した、全国の食料品店 POI マスターデータセットの構築・検証・可視化リポジトリ。
