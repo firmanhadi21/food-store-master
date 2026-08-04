@@ -34,7 +34,13 @@ import os
 import duckdb
 
 D = "data/semarang"
-M = f"read_parquet('{D}/semarang_food_master.parquet')"
+# ★ 店舗レイヤは best-available を優先する（build_outlets_best_available.py の出力）。
+#   マスターのチェーン網羅率は 42%、しかも kecamatan 別 0.19〜0.79 と**空間的に偏る**ため、
+#   曝露研究の入力としては絶対数だけでなく割合まで壊れる。best 層は網羅 ~85%。
+_BEST = f"{D}/semarang_outlets_best.parquet"
+_MASTER = f"{D}/semarang_food_master.parquet"
+_SRC = _BEST if os.path.exists(_BEST) else _MASTER
+M = f"read_parquet('{_SRC}')"
 S = f"read_parquet('{D}/schools_semarang_combined.parquet')"
 OUT = "docs/semarang/検証_学校周辺タバコ販売_バッファ.csv"
 
@@ -63,8 +69,8 @@ def h(t):
 
 # 等距円筒近似（この環境の DuckDB は spheroid 系が nan を返す）。緯度 -7 度。
 con.execute(f"""create table st as
-  select store_id, cat, name, src,
-         lng*111320*0.99255 x, lat*111320 y, lat, lng
+  select cat, name, src,
+         lon*111320*0.99255 x, lat*111320 y, lat, lon
   from {M}""")
 con.execute(f"""create table sc as
   select school_id as osm_id, name, level,
@@ -74,6 +80,7 @@ con.execute(f"""create table sc as
 n_st, = con.execute("select count(*) from st").fetchone()
 n_sc, = con.execute("select count(*) from sc").fetchone()
 print(f"店舗 {n_st:,} 件 / 学校 {n_sc:,} 件")
+print(f"店舗レイヤ: {os.path.basename(_SRC)}")
 
 h("① PP 28/2024 販売禁止 200m — 圏内の店舗数（潜在的非適合の下限）")
 rows = []
@@ -84,7 +91,7 @@ for label, sfilter in SCHOOL_SETS:
     for cat in TOBACCO_CATS:
         tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
         n_in, = con.execute(f"""
-          select count(distinct t.store_id) from st t join sc s
+          select count(distinct (t.x, t.y, t.name)) from st t join sc s
             on floor(s.x/{R_SALES})::bigint between floor(t.x/{R_SALES})::bigint - 1
                                                 and floor(t.x/{R_SALES})::bigint + 1
            and floor(s.y/{R_SALES})::bigint between floor(t.y/{R_SALES})::bigint - 1
@@ -101,7 +108,7 @@ sfilter = "level in ('SD','SMP','SMA')"
 for cat in TOBACCO_CATS:
     tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
     n_in, = con.execute(f"""
-      select count(distinct t.store_id) from st t join sc s
+      select count(distinct (t.x, t.y, t.name)) from st t join sc s
         on floor(s.x/{R_ADS})::bigint between floor(t.x/{R_ADS})::bigint - 1
                                           and floor(t.x/{R_ADS})::bigint + 1
        and floor(s.y/{R_ADS})::bigint between floor(t.y/{R_ADS})::bigint - 1
@@ -143,12 +150,16 @@ print(f"  n={r[0]:,}  min={r[1]:.0f}m  p25={r[2]:.0f}m  median={r[3]:.0f}m  "
 h("⑤ 現地調査で埋まる部分の見積もり")
 km, = con.execute("select count(*) from st where cat='toko_kelontong'").fetchone()
 print(f"  現在の toko_kelontong は {km} 件。実態は桁違いに多い（POI に載らないため）。")
-print("  → ①の toko_kelontong 行は**下限**であり、現地調査後に大きく増える。")
-print("  → ★ minimarket も**下限**。Google Places との突合でマスターの網羅率は")
-print("       Alfamart 0.55 / Indomaret 0.48 と判明した（fetch_chains_google_places.py）。")
-print("       「チェーン店だから網羅がよい」という当初の想定は**誤り**だった。")
-print("  → よって①②の絶対数はいずれも実態の約半分。割合は欠落が空間的にランダムなら")
-print("     保たれるが、それ自体が未検証の仮定（kecamatan 別の突合が必要）。")
+print("  → ①の toko_kelontong 行は依然**下限**。現地調査でしか埋まらない。")
+print("  → minimarket は best-available 層（推定真値の ~85%）に差し替え済み。")
+print("     マスター単独では網羅 42%・kecamatan 別 0.19〜0.79 の偏りがあり使えなかった。")
+print("\n  ★ 差し替えで分かった重要な非対称性:")
+print("     - **店舗を分母にした割合はほぼ動かない**（200m 圏内 46.7% → 47.1%）")
+print("     - **学校を分母にした割合は大きく動く**（33.2% → 49.4%）")
+print("     店舗と学校が同じ商業街路に共在するため、店を足しても『学校の近くにある店の")
+print("     割合』は変わらないが、『近くに店がある学校の割合』は閾値越えが増えて跳ね上がる。")
+print("     → 曝露研究の主指標には**学校を分母にした指標**を採ること。網羅率の影響を")
+print("        受けやすく、かつ政策的にも意味がある（規制半径内の学校数）。")
 
 os.makedirs("docs/semarang", exist_ok=True)
 con.execute("create table res(学校集合 varchar, 学校数 bigint, 業態 varchar, "

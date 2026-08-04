@@ -249,6 +249,33 @@ against distance.
 Reproduce with `python3 scripts/semarang/analyze_tobacco_school_buffers.py`
 → `docs/semarang/検証_学校周辺タバコ販売_バッファ.csv`
 
+> **Outlet layer: `semarang_outlets_best.parquet`** (`build_outlets_best_available.py`) —
+> minimarkets from the Google-based best-available chain layer (**949**, ≈85% of estimated truth)
+> rather than the master's 548 (≈42%, spatially biased). Other categories unchanged from the
+> master; **toko_kelontong remains a 186 floor**.
+
+### 3.0 ⚠️ The correction changed the two metrics *completely differently*
+
+Re-running against the corrected layer produced the single most important methodological finding
+in this document:
+
+| Metric | Master layer (42% coverage) | Best layer (85% coverage) | Change |
+|---|---:|---:|---|
+| **Outlet-denominated** — share of minimarkets within 200 m of a school | 46.7% | **47.1%** | **+0.4 pt — stable** |
+| **School-denominated** — share of schools with a minimarket within 200 m | 33.2% | **49.4%** | **+16.2 pt — massive** |
+| Median school → nearest minimarket | 258 m | **199 m** | −59 m |
+
+**Why they diverge:** outlets and schools both cluster on the same commercial streets, so adding
+~400 stores barely changes *what fraction of stores happen to sit near a school*. But it pushes
+many schools across the 200 m threshold for the first time, so *what fraction of schools have an
+outlet nearby* jumps.
+
+> **Design consequence: use the school-denominated metric as the primary measure.**
+> It is the one sensitive to coverage — and therefore the one that was badly wrong before — and it
+> is also the policy-relevant quantity (how many schools sit inside the prohibited radius).
+> An outlet-denominated headline would have looked stable and defensible while resting on a layer
+> that was missing 58% of its stores.
+
 ### 3.1 Outlets within the 200 m sales-restriction radius
 
 Sensitivity to whether *satuan pendidikan* includes TK/PAUD — an interpretation question that
@@ -256,9 +283,9 @@ materially changes the answer:
 
 | School set | Schools | minimarket | share | toko_kelontong | share |
 |---|---:|---:|---:|---:|---:|
-| **A** SD/SMP/SMA | 805 | 256 / 548 | **46.7%** | 93 / 186 | 50.0% |
-| **B** SMP/SMA only | 298 | 114 / 548 | 20.8% | 40 / 186 | 21.5% |
-| **C** incl. TK/PAUD + all | 2,896 | 464 / 548 | **84.7%** | 145 / 186 | 78.0% |
+| **A** SD/SMP/SMA | 805 | 447 / 949 | **47.1%** | 93 / 186 | 50.0% |
+| **B** SMP/SMA only | 298 | 217 / 949 | 22.9% | 40 / 186 | 21.5% |
+| **C** incl. TK/PAUD + all | 2,896 | 782 / 949 | **82.4%** | 145 / 186 | 78.0% |
 
 Set C rose from 73.4% to 84.7% once Dukcapil's additional 480 TK/PAUD were included — the
 interpretation question in §6.1 is therefore worth even more than it first appeared. Sets A and B
@@ -270,7 +297,7 @@ School set A (SD/SMP/SMA):
 
 | Outlet type | Within 500 m | Share |
 |---|---:|---:|
-| minimarket | 495 / 548 | **90.3%** |
+| minimarket | 832 / 949 | **87.7%** |
 | toko_kelontong | 163 / 186 | 87.6% |
 
 **Essentially the entire chain minimarket network sits inside the advertising-restricted zone.**
@@ -281,9 +308,9 @@ Schools with a minimarket within 200 m:
 
 | School set | Share |
 |---|---:|
-| A SD/SMP/SMA | 267 / 805 = **33.2%** |
-| B SMP/SMA | 102 / 298 = 34.2% |
-| C all levels | 965 / 2,896 = 33.3% |
+| A SD/SMP/SMA | 398 / 805 = **49.4%** |
+| B SMP/SMA | 159 / 298 = 53.4% |
+| C all levels | 1,416 / 2,896 = 48.9% |
 
 Notably **stable at ~33% across all three definitions** — the share of schools with a minimarket
 within 200 m does not depend on which levels are counted, even though the share of *outlets*
@@ -292,12 +319,12 @@ along the same commercial streets.
 
 ### 3.4 Distance from school to nearest minimarket
 
-SD/SMP/SMA, n = 774 (31 of 805 schools had no minimarket within the search window, so the true
+SD/SMP/SMA, n = 793 (12 of 805 schools had no minimarket within the search window, so the true
 median is marginally higher than shown):
 
 | min | p25 | median | p75 | max |
 |---:|---:|---:|---:|---:|
-| 6 m | 150 m | **258 m** | 444 m | 2,096 m |
+| 6 m | 116 m | **199 m** | 331 m | 1,870 m |
 
 ---
 
