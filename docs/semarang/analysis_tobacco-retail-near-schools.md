@@ -67,9 +67,9 @@ Both are obtainable from the same photographs.
 
 ## 2. Data sources
 
-### 2.1 Schools — Dapodik does not publish coordinates
+### 2.1 Schools — two sources, both incomplete in different ways
 
-Attempted and ruled out:
+**Dapodik itself does not publish coordinates.** Attempted and ruled out:
 
 | Source | Result |
 |---|---|
@@ -78,26 +78,49 @@ Attempted and ruled out:
 | `referensi.data.kemendikdasmen.go.id` | **Live**, but aggregate counts per province and NPSN/name search only — **no coordinates** |
 | Existing scrapers (`egin10/dapodik`) | Confirm NPSN, name, counts only |
 
-The reason is structural: **school coordinates live in Verval SP, not Dapodik**, and Verval SP is
-authenticated for school operators. There is no public scrape path.
+Structural reason: **coordinates live in Verval SP, not Dapodik**, and Verval SP is authenticated
+for school operators.
 
-**Routes to Dapodik coordinates, if needed:** a formal request to Dinas Pendidikan Kota Semarang,
-or Semarang's local open data portal. Neither is a scrape.
+**However — Dukcapil republishes Kemendikbud data *with* coordinates**, via an ArcGIS
+FeatureServer (`scripts/semarang/fetch_schools_dukcapil.py`):
 
-**Used instead — OpenStreetMap** (`scripts/semarang/fetch_schools_semarang.py`):
-**2,017 schools** within Kota Semarang.
+```
+https://gis.dukcapil.kemendagri.go.id/arcgis/rest/services/Hosted/
+  Fasilitas_Pendidikan/FeatureServer/1        (layer "education", 448,810 national)
+```
 
-| Level | Count |
-|---|---:|
-| TK / PAUD / RA | 1,110 |
-| SD / MI | 507 |
-| SMA / SMK / MA | 152 |
-| SMP / MTs | 145 |
-| unknown | 103 |
+`source` values are *Website Kemendikbud* / *Website Kemdikbud* / *Website Pindai Dikti* —
+**Kemendikbud-derived, independent of OSM**, so it is a genuine cross-validation source and
+carries no ODbL inheritance.
 
-The distribution has the expected shape for an Indonesian city (SD ≫ SMP ≈ SMA).
-**Dapodik's public counts should be used to validate OSM completeness** — counts are public even
-though coordinates are not.
+> ⚠️ **But its coverage is regionally uneven and level-incomplete — verified by direct query:**
+> - Within the Semarang bbox, `tags='Elementary School'` returns **0** and
+>   `'Junior High School'` returns **0**, while nationally these hold **54,159** and **93,714**
+>   records respectively.
+> - `'Senior High School'` **does not exist as a tag anywhere nationally** (count 0; the 95,457
+>   `High` matches are all Junior High).
+>
+> **Therefore Dukcapil contributes nothing to SD/SMP/SMA in Semarang.** Its value is confined to
+> TK/PAUD and higher education.
+
+**Combined layer** (`scripts/semarang/build_schools_combined.py`) — union, deduped at 100 m and
+**only within the same level** (TK and SD share sites routinely; merging on proximity alone would
+destroy real facilities, the same failure avoided in the store master with Alfamart/Indomaret):
+
+| Level | Combined | osm | dukcapil |
+|---|---:|---:|---:|
+| TK / PAUD | 1,590 | 1,110 | **+480** |
+| SD / MI | 507 | 507 | 0 |
+| PT (higher ed) | 270 | 0 | 270 |
+| SMA / SMK / MA | 153 | 152 | 1 |
+| SMP / MTs | 145 | 145 | 0 |
+| unknown | 175 | 103 | 72 |
+| informal / SLB | 56 | 0 | 56 |
+| **Total** | **2,896** | 2,017 | 879 |
+
+**Consequence for this analysis:** school set **A (SD/SMP/SMA) is effectively OSM-only**, so
+**its completeness remains unvalidated** — the open problem in §6. Dukcapil's contribution lands
+entirely in set C.
 
 > **Classifier bug worth recording.** The first version used substring matching and put
 > `SD Negeri Mangunharjo` in SMA, because `MAN` (Madrasah Aliyah Negeri) matched inside
@@ -127,9 +150,13 @@ materially changes the answer:
 
 | School set | Schools | minimarket | share | toko_kelontong | share |
 |---|---:|---:|---:|---:|---:|
-| **A** SD/SMP/SMA | 804 | 256 / 548 | **46.7%** | 93 / 186 | 50.0% |
-| **B** SMP/SMA only | 297 | 114 / 548 | 20.8% | 40 / 186 | 21.5% |
-| **C** incl. TK/PAUD | 2,017 | 402 / 548 | **73.4%** | 131 / 186 | 70.4% |
+| **A** SD/SMP/SMA | 805 | 256 / 548 | **46.7%** | 93 / 186 | 50.0% |
+| **B** SMP/SMA only | 298 | 114 / 548 | 20.8% | 40 / 186 | 21.5% |
+| **C** incl. TK/PAUD + all | 2,896 | 464 / 548 | **84.7%** | 145 / 186 | 78.0% |
+
+Set C rose from 73.4% to 84.7% once Dukcapil's additional 480 TK/PAUD were included — the
+interpretation question in §6.1 is therefore worth even more than it first appeared. Sets A and B
+are unchanged, because Dukcapil adds no SD/SMP/SMA in Semarang.
 
 ### 3.2 Outlets within the 500 m advertising-restriction radius
 
@@ -148,18 +175,23 @@ Schools with a minimarket within 200 m:
 
 | School set | Share |
 |---|---:|
-| A SD/SMP/SMA | 267 / 804 = **33.2%** |
-| B SMP/SMA | 102 / 297 = 34.3% |
-| C all levels | 649 / 2,017 = 32.2% |
+| A SD/SMP/SMA | 267 / 805 = **33.2%** |
+| B SMP/SMA | 102 / 298 = 34.2% |
+| C all levels | 965 / 2,896 = 33.3% |
+
+Notably **stable at ~33% across all three definitions** — the share of schools with a minimarket
+within 200 m does not depend on which levels are counted, even though the share of *outlets*
+inside the radius (§3.1) swings from 20.8% to 84.7%. Schools and minimarkets are both distributed
+along the same commercial streets.
 
 ### 3.4 Distance from school to nearest minimarket
 
-SD/SMP/SMA, n = 773 (31 of 804 schools had no minimarket within the search window, so the true
+SD/SMP/SMA, n = 774 (31 of 805 schools had no minimarket within the search window, so the true
 median is marginally higher than shown):
 
 | min | p25 | median | p75 | max |
 |---:|---:|---:|---:|---:|
-| 6 m | 150 m | **259 m** | 444 m | 2,096 m |
+| 6 m | 150 m | **258 m** | 444 m | 2,096 m |
 
 ---
 
@@ -209,8 +241,12 @@ density near schools is genuinely elevated.
 ## 6. Next steps
 
 1. **Verify the regulation text directly** — both radii, transition provisions, and whether
-   *satuan pendidikan* includes TK/PAUD. §3.1 swings from 20.8% to 73.4% on that last point alone.
-2. **Validate OSM school coverage** against Dapodik public counts per level.
+   *satuan pendidikan* includes TK/PAUD. §3.1 swings from **20.8% to 84.7%** on that last point
+   alone; it is worth more than any further analysis.
+2. **Validate SD/SMP/SMA coverage — the open problem.** Dukcapil has no SD/SMP for Semarang, so
+   set A rests on OSM alone and is unvalidated. Use Dapodik's *public counts* per level
+   (coordinates are not needed to check completeness), or request the layer from Dinas
+   Pendidikan Kota Semarang.
 3. **Select the school sample** — stratify by level and neighbourhood type.
 4. **Extend the capture protocol** with the tobacco attributes (survey plan §4, Phase 0).
 5. **Ethics clearance** — surveying near schools raises children-in-frame risk. Survey during

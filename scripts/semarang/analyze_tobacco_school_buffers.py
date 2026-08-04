@@ -17,8 +17,16 @@ PP 28/2024（UU 17/2023 施行令）の該当条項:
 したがって本スクリプトの出力は「現地調査でどれだけ数字が増えるか」の下限であり、
 調査の必要性そのものを定量化する材料になる。
 
+学校レイヤについて
+------------------
+`build_schools_combined.py` の出力（OSM ∪ Dukcapil）を使う。ただし **Dukcapil は
+Semarang で SD/SMP を1件も持たない**（全国では持つが地域的に不均一。'Senior High School'
+に至ってはタグ自体が全国に存在しない）ため、**集合 A（SD/SMP/SMA）は実質 OSM 単独**。
+Dukcapil の寄与は TK/PAUD（+480 校）に限られ、集合 C にのみ効く。
+→ **A の網羅性は未検証のまま**であることを結果の解釈時に忘れないこと。
+
 入力: data/semarang/semarang_food_master.parquet
-      data/semarang/osm_schools_semarang.parquet
+      data/semarang/schools_semarang_combined.parquet
 出力: docs/semarang/検証_学校周辺タバコ販売_バッファ.csv
 """
 import os
@@ -27,7 +35,7 @@ import duckdb
 
 D = "data/semarang"
 M = f"read_parquet('{D}/semarang_food_master.parquet')"
-S = f"read_parquet('{D}/osm_schools_semarang.parquet')"
+S = f"read_parquet('{D}/schools_semarang_combined.parquet')"
 OUT = "docs/semarang/検証_学校周辺タバコ販売_バッファ.csv"
 
 # PP 28/2024 の2つの半径
@@ -59,7 +67,7 @@ con.execute(f"""create table st as
          lng*111320*0.99255 x, lat*111320 y, lat, lng
   from {M}""")
 con.execute(f"""create table sc as
-  select osm_id, name, level,
+  select school_id as osm_id, name, level,
          lon*111320*0.99255 x, lat*111320 y, lat, lon
   from {S}""")
 
