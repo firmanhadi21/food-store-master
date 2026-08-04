@@ -1,22 +1,31 @@
-> ## 🇮🇩 このリポジトリは fork です
+> ## 🇮🇩 This repository is a fork
 >
-> **fork 元**: [shiwaku/japan-food-store-master](https://github.com/shiwaku/japan-food-store-master)
-> — 農水省「食料品アクセス」定義に準拠した日本全国の食料品店 POI マスター。
-> 以下の README とドキュメントの大半は fork 元のもので、日本を対象とした内容。
+> **Upstream**: [shiwaku/japan-food-store-master](https://github.com/shiwaku/japan-food-store-master)
+> — a nationwide food-store POI master for Japan, built to the MAFF "food access" definition.
+> The README below and most of `docs/` are upstream's, and are about Japan.
 >
-> **この fork で追加したもの**: 同じパイプラインを **インドネシア・Kota Semarang** に
-> 移植し、そこから派生した **PP 28/2024（学校周辺のタバコ販売・広告規制）の適合状況の
-> 可視化**。
+> **What this fork adds**: the same pipeline ported to **Kota Semarang, Indonesia**, and the
+> work that grew out of it — mapping tobacco retail against the school-radius provisions of
+> **PP 28/2024**.
 >
-> - 公開サイト: **[Atlas Ruang Publik](https://firmanhadi21.github.io/food-store-master/)** — 第1studi は「Ritel Rokok di Sekitar Sekolah, Kota Semarang」
-> - コード: `scripts/semarang/` · ドキュメント: **[`docs/semarang/`](docs/semarang/)**
-> - 公開サイト: `atlas/`（**Atlas Ruang Publik**。fork 元の `viewer/` は日本専用のためデプロイしていない）
+> - Public site: **[Atlas Ruang Publik](https://firmanhadi21.github.io/atlas-ruang-publik/)**
+>   (separate repository: [firmanhadi21/atlas-ruang-publik](https://github.com/firmanhadi21/atlas-ruang-publik))
+> - Code: `scripts/semarang/` · Documentation: **[`docs/semarang/`](docs/semarang/)**
+> - `atlas/` is the working copy of the public site; upstream's `viewer/` is not deployed,
+>   because its vite base is fixed to the upstream repository name.
 >
-> 移植の要点は「日本版の中核的な設計判断が3つとも逆転する」こと
-> （和集合を採る／category でなく名称で分類する／pasar が主役）。
-> 詳細と実測値は [`docs/semarang/`](docs/semarang/) を参照。
+> The headline of the port is that **all three of the Japan version's core design decisions
+> invert**: take the union of sources rather than one per category, classify on names rather
+> than categories, and treat pasar (traditional markets) as the principal category.
+> Measurements and reasoning are in [`docs/semarang/`](docs/semarang/).
 >
-> 作成: Firman Hadi（Teknik Geodesi, Universitas Diponegoro）
+> Language note: `docs/semarang/` and `scripts/semarang/` are in English (the manuscript
+> draft is in Bahasa Indonesia), since the team working on them is Semarang-based.
+> `docs/master/`, `docs/permits/` and `docs/archive/` remain in Japanese — they are
+> upstream's work about Japan, and translating them would only break diffability against
+> upstream.
+>
+> Maintained by Firman Hadi, Department of Geodetic Engineering, Universitas Diponegoro.
 
 ---
 

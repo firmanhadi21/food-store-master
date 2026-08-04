@@ -1,44 +1,44 @@
 #!/usr/bin/env python3
 """
-公開マップ用の GeoJSON を書き出す（atlas/public/data/）。
+Write the GeoJSON the public map consumes (atlas/public/data/).
 
-PMTiles を使わない理由
-----------------------
-日本版ビューアは全国 10 万点規模なので tippecanoe → PMTiles が要る。Semarang は
-学校 2,765 + 店舗 1,388 = 4 千点規模で、GeoJSON なら合計数百 KB に収まる。
-ビルドに tippecanoe を要求しないほうが再現性が高いので**素の GeoJSON**にする。
+Why not PMTiles
+---------------
+The Japan viewer carries ~100k points nationally, so tippecanoe and PMTiles are necessary
+there. Semarang is 2,765 institutions plus 1,388 outlets — a few hundred KB as plain GeoJSON.
+Not requiring tippecanoe to build the site makes it far more reproducible, so **plain
+GeoJSON** it is.
 
-★ 対象とする「satuan pendidikan」の範囲（2026-08-04 に条文で確定）
---------------------------------------------------------------
+** Scope of "satuan pendidikan", settled against the regulation on 2026-08-04
 PP 28/2024 **Pasal 434(1)(e)**:
-  「dalam radius 200 (dua ratus) meter dari satuan pendidikan dan tempat bermain anak」
-**Penjelasan Pasal 518 Ayat (1)（p.570）** — PP 全体で唯一の satuan pendidikan の定義:
-  「Satuan pendidikan antara lain pendidikan anak usia dini, sekolah/madrasah,
-    pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal.」
+  "dalam radius 200 (dua ratus) meter dari satuan pendidikan dan tempat bermain anak"
+**Penjelasan Pasal 518 Ayat (1), p.570** — the only definition in the whole regulation:
+  "Satuan pendidikan antara lain pendidikan anak usia dini, sekolah/madrasah,
+   pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal."
 
-→ **PAUD/TK を含む。madrasah・pesantren・perguruan tinggi も含む。**
-  したがって当初の集合A（SD/SMP/SMA のみ）は**法的に過小**であり、TK/PAUD/PT を
-  含めた集合が正しい。informal（learning center 等）は「pendidikan formal と同種」と
-  言えないので除外する。
+=> **PAUD/TK is included**, as are madrasah, pesantren and higher education. Treating
+   SD/SMP/SMA as the set (the earlier approach) was legally too narrow. 'informal'
+   (learning centres) is excluded, not being "sejenis dengan pendidikan formal".
 
-  「tempat bermain anak」について: 条文は satuan pendidikan と並べて挙げるが、これは
-  一般の児童公園ではなく **kelompok bermain（KB）＝ PAUD の一形態**を指す（現地での用法）。
-  KB は Dapodik の PAUD 区分（TK 856 + KB 278 + TPA 31 + SPS 274）に含まれ、
-  本レイヤの level='TK' に入っているので**すでに対象に含まれている**。別レイヤは不要。
+On "tempat bermain anak": the article names it alongside satuan pendidikan, but it refers to
+*kelompok bermain* — a form of PAUD — not a public playground. KB sits inside Dapodik's PAUD
+figures (TK 856 + KB 278 + TPA 31 + SPS 274) and inside this layer's level='TK', so it is
+**already covered**; no separate layer is needed.
 
-  未対応（過小評価として明記する）:
-   - **pesantren** は独立したレイヤとして持っていない（一部は madrasah として混在）
+Still missing (stated as an understatement): **pesantren** has no layer of its own, and some
+are folded in as madrasah.
 
-出力
-----
-  sekolah.geojson    satuan pendidikan（TK/PAUD・SD・SMP・SMA・SLB・PT）
-                     属性: nama, jenjang, n200（200m 以内の minimarket 数）, n500
-  minimarket.geojson ミニマーケット（best-available 層）
-  kecamatan.geojson  行政区界（集計表示用）
-  ringkasan.json     kecamatan 別の集計 + 全体サマリ
+Output
+------
+  sekolah.geojson    satuan pendidikan (TK/PAUD, SD, SMP, SMA, SLB, PT)
+                     properties: nama, jenjang, n200, n500, dmin
+  minimarket.geojson minimarkets that may be republished (see the licence note below)
+  kecamatan.geojson  district boundaries, for the aggregate table
+  ringkasan.json     per-kecamatan aggregates plus the headline figures
 
-★ 個別の店舗名は出すが「違反」とは書かない。近接は法的判断ではない（doc §4）。
-  集計は kecamatan 単位。個別事業者を名指しで糾弾する作りにはしない。
+** Individual store names are shown, but nothing is described as a violation. Proximity is
+   not a legal finding. Aggregation is by kecamatan; the map is not built to name and shame
+   individual businesses.
 """
 import json
 import os
@@ -52,7 +52,7 @@ R_SALES, R_ADS = 200, 500
 con = duckdb.connect()
 con.execute("INSTALL spatial; LOAD spatial;")
 
-# 条文の定義に該当する校種。'informal'（learning center 等）と 'unknown' は除く。
+# Levels matching the statutory definition. 'informal' and 'unknown' are excluded.
 SATUAN = "('TK','SD','SMP','SMA','SLB','PT')"
 con.execute(f"""create table sc as
   select school_id, name, level,
@@ -64,7 +64,7 @@ con.execute(f"""create table st as
   from read_parquet('{D}/semarang_outlets_best.parquet')
   where cat = 'minimarket'""")
 
-# 学校ごとの 200m/500m 圏内店舗数
+# Outlets within each radius, per institution
 con.execute(f"""create table sc2 as
   select s.*,
     (select count(*) from st t
@@ -86,39 +86,41 @@ def dump(rows, path, props):
     with open(os.path.join(OUT, path), "w", encoding="utf-8") as f:
         json.dump({"type": "FeatureCollection", "features": feats}, f,
                   ensure_ascii=False, separators=(",", ":"))
-    print(f"  {path:22s} {len(feats):>6,} 件  "
+    print(f"  {path:22s} {len(feats):>6,} features  "
           f"{os.path.getsize(os.path.join(OUT, path))/1024:>7.0f} KB")
 
 
-print("出力:")
+print("writing:")
 dump(con.execute("""select name, level, n200, n500, dmin, lon, lat
                     from sc2 order by n200 desc""").fetchall(),
      "sekolah.geojson", ["nama", "jenjang", "n200", "n500", "dmin"])
 
-# ★ 再配布可能なものだけを点として公開する（重要）
+# ** Publish only points that may be redistributed — this matters.
 #
-#   統計（n200/n500/median）は best-available 層＝Google Places を含む 949 点で計算するが、
-#   **Google Places の生データは再配布できない**（Google Maps Platform 規約は Content の
-#   保存・再配布を禁じ、限定的なキャッシュしか認めない）。派生した「学校から 200m 以内に
-#   何店ある」という数値は統計であって Content ではないので公開してよいが、
-#   **店舗の点そのものを GeoJSON で配るのは規約違反になる**。
+#   The statistics (n200/n500/median) are computed over the best-available layer of 949
+#   outlets, which includes Google Places records. **Google Places content may not be
+#   redistributed** — the Maps Platform terms forbid storing or republishing content and
+#   allow only limited caching. Derived figures such as "how many outlets are within 200 m
+#   of this school" are statistics rather than Google content and may be published, but
+#   **publishing the store points themselves as GeoJSON would breach the terms.**
 #
-#   → 表示用の点は Overture（CDLA-Permissive-2.0）と OSM（ODbL）由来だけに限定する。
-#     表示点数と統計の母数が食い違うので、UI にその旨を明記すること。
+#   => Points shown on the map are restricted to Overture (CDLA-Permissive-2.0) and OSM
+#      (ODbL) provenance. The number of visible points therefore differs from the
+#      statistical denominator, and the UI says so explicitly.
 dump(con.execute("""select name, src, lon, lat from st
                     where src not like 'best:google%'""").fetchall(),
      "minimarket.geojson", ["nama", "sumber"])
 n_pub, = con.execute(
     "select count(*) from st where src not like 'best:google%'").fetchone()
 
-# kecamatan 界（集計表示用）
+# District boundaries, for the aggregate table
 kec_path = f"{D}/semarang_kecamatan.geojson"
 if os.path.exists(kec_path):
     with open(kec_path, encoding="utf-8") as f:
         kec = json.load(f)
     with open(os.path.join(OUT, "kecamatan.geojson"), "w", encoding="utf-8") as f:
         json.dump(kec, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"  kecamatan.geojson      {len(kec['features']):>6,} 件")
+    print(f"  kecamatan.geojson      {len(kec['features']):>6,} features")
     con.execute(f"""create table kec as
       select name, geom::GEOMETRY geom from ST_Read('{kec_path}')""")
     agg = con.execute(f"""
@@ -134,8 +136,9 @@ else:
 tot = con.execute("""select count(*), count(*) filter (where n200 > 0),
     round(median(dmin)) from sc2""").fetchone()
 n_toko, = con.execute("select count(*) from st").fetchone()
-# 店舗側の指標: 何割の minimarket が「販売禁止半径」の中にあるか。
-# 学校側の指標より訴求力が強い（=市内の大半の店が規制圏内にある）。
+# Outlet-side measure: what share of minimarkets sit inside the sales-prohibition radius.
+# More arresting than the school-side figure, because it states the scale of the problem
+# in terms of the city's own retail network.
 toko_in, = con.execute(f"""select count(*) from st t where exists (
     select 1 from sc s
     where sqrt(power(t.x-s.x,2)+power(t.y-s.y,2)) <= {R_SALES})""").fetchone()
@@ -148,7 +151,7 @@ summary = {
     "total_minimarket": n_toko,
     "minimarket_dalam_200m": toko_in,
     "persen_minimarket": round(toko_in / n_toko * 100, 1),
-    # 表示できる点の数（統計の母数 total_minimarket より少ない。理由は上の注記）
+    # Publishable points, fewer than the statistical denominator — see the licence note above
     "minimarket_ditampilkan": n_pub,
     "kecamatan": [{"nama": a[0], "sekolah": a[1], "kena": a[2],
                    "persen": round(a[2] / a[1] * 100, 1) if a[1] else None,
@@ -156,8 +159,10 @@ summary = {
 }
 with open(os.path.join(OUT, "ringkasan.json"), "w", encoding="utf-8") as f:
     json.dump(summary, f, ensure_ascii=False, indent=1)
-print(f"  ringkasan.json         kecamatan {len(agg)} 区")
+print(f"  ringkasan.json         {len(agg)} kecamatan")
 
-print(f"\n  学校 {tot[0]:,} 校中 {tot[1]:,} 校（{summary['persen_sekolah']}%）が "
-      f"200m 以内に minimarket あり")
-print(f"  最近隣 minimarket までの距離 中央値 {summary['median_jarak_m']}m")
+print(f"\n  {tot[1]:,} of {tot[0]:,} institutions ({summary['persen_sekolah']}%) "
+      f"have a minimarket within {R_SALES} m")
+print(f"  {toko_in:,} of {n_toko:,} minimarkets ({summary['persen_minimarket']}%) "
+      f"lie within {R_SALES} m of one")
+print(f"  median distance to nearest minimarket: {summary['median_jarak_m']} m")

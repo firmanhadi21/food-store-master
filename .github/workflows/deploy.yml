@@ -26,10 +26,10 @@ jobs:
         with:
           node-version: 20
 
-      # ★ 本家（shiwaku/japan-food-store-master）の日本版ビューア viewer/ は
-      #   **デプロイしない**。fork 元の base が /japan-food-store-master/ 固定で
-      #   このリポジトリ名（food-store-master）では 404 になるため。
-      #   コード自体は本家との差分を追えるよう残してある。
+      # ** The upstream Japan viewer (viewer/, from shiwaku/japan-food-store-master) is
+      #   **not deployed**. Its vite base is fixed at /japan-food-store-master/, which
+      #   404s under this repository's name. The code is kept so the fork can still be
+      #   diffed against upstream.
       - name: Build Atlas Ruang Publik
         working-directory: atlas
         run: |

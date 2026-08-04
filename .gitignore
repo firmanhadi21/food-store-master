@@ -3,7 +3,7 @@ node_modules/
 dist/
 *.local
 
-# Data files（生データ・再生成可能）
+# Data files (raw inputs and regenerable outputs)
 data/
 input/
 output/
@@ -11,13 +11,13 @@ output/
 *.geojson
 *.tsv
 
-# PMTiles は原則コミットしないが、公開用は viewer/public/ に置いてコミットする
+# PMTiles are normally not committed; the published ones live in viewer/public/
 *.pmtiles
 !viewer/public/*.pmtiles
 
-# Semarang 公開マップの配信データはコミットする（GitHub Actions のビルド入力になるため）。
-# 上の data/ と *.geojson に食われるので二段で打ち消す。git は除外された**ディレクトリ**の
-# 中身を再包含できないので、先にディレクトリを外してからファイルを外す。
+# The Semarang map's published data IS committed — GitHub Actions needs it as build input.
+# It is caught by data/ and *.geojson above, so it takes two negations: git cannot
+# re-include files inside an excluded **directory**, so the directory is un-excluded first.
 !atlas/public/data/
 !atlas/public/data/*.geojson
 !atlas/public/data/*.json

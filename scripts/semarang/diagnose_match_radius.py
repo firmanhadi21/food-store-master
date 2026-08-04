@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """
-Overture と OSM が同じチェーン店をどれだけ共有しているかを、突合半径を変えて測る。
+Measure how much of the same chain Overture and OSM actually share, by sweeping the match
+radius.
 
-なぜ必要か
-----------
-compare_sources_semarang.py で「100m 以内で一致するのは Alfamart 84 件中 18 件だけ」
-という結果が出た。解釈は2通りあり、どちらかで設計判断が正反対になる:
+Why this matters
+----------------
+compare_sources_semarang.py found that only 18 of 84 OSM Alfamart records match an Overture
+Alfamart within 100 m. There are two readings, and they lead to opposite designs:
 
-  仮説1: 両ソースは**別々の実在店舗**を捉えている（真に相補的）
-         → 和集合が正しい。日本と逆に「OSM ∪ Overture」を採るべき。
-  仮説2: 同一店舗だが**座標がズレていて突合に失敗**している
-         → 和集合は水増し。日本と同じく単一ソース優先にすべき。
+  H1: the two sources hold **different real stores** (genuinely complementary)
+      => the union is correct, and unlike Japan, "Overture union OSM" is the right call.
+  H2: the same stores, but **coordinates too far apart to match**
+      => the union inflates, and single-source-per-category is right, as in Japan.
 
-判別法: 突合半径を広げて一致数の伸びを見る。
-  - 早期に飽和 → 仮説1（半径を広げても一致しない＝別の店）
-  - 伸び続ける → 仮説2（座標ズレ）
+Test: widen the match radius and watch how the match count grows.
+  - plateaus early  -> H1 (widening does not find them because they are different stores)
+  - keeps climbing  -> H2 (coordinate drift)
 
-あわせて ST_Area_Spheroid が nan を返す件（CLAUDE.md 既知）を等距円筒近似で回避し、
-市域ポリゴンの組み立てが正しいかを面積で検算する。
+Also verifies the assembled city polygon by area, working around ST_Area_Spheroid returning
+nan in this environment (a known issue, documented on the Japan side too).
 """
 import duckdb
 
@@ -33,13 +34,13 @@ def h(t):
     print(f"\n{'=' * 72}\n{t}\n{'=' * 72}")
 
 
-h("⓪ 市域ポリゴンの検算（ST_Area_Spheroid は この環境で nan を返す）")
-# 等距円筒近似: 緯度 -7 度付近なので経度1度 ≒ 111,320*cos(7°) m
+h("0. Sanity-check the city polygon (ST_Area_Spheroid returns nan here)")
+# Equirectangular: at latitude -7, one degree of longitude is 111,320 * cos(7 deg) metres
 a_deg, = con.execute("select ST_Area(geom) from kota").fetchone()
-km2 = a_deg * 111.320 * 111.320 * 0.99255  # cos(7°)
-print(f"  ST_Area(度^2) = {a_deg:.6f}")
-print(f"  等距円筒近似   = {km2:,.1f} km2   （Kota Semarang 公称 373.8 km2）")
-print(f"  → 比 {km2 / 373.8:.3f}   1.0 付近ならリング組み立ては正しい")
+km2 = a_deg * 111.320 * 111.320 * 0.99255
+print(f"  ST_Area (deg^2) = {a_deg:.6f}")
+print(f"  equirectangular = {km2:,.1f} km2   (Kota Semarang official 373.8 km2)")
+print(f"  -> ratio {km2 / 373.8:.3f}; near 1.0 means the ring assembly is correct")
 
 con.execute(f"""create table ov as
   select name, category, brand_name, lon, lat, ST_Point(lon, lat) geom
@@ -50,24 +51,27 @@ con.execute(f"""create table osm as
   from read_parquet('{D}/osm_semarang_food.parquet')
   where exists (select 1 from kota k where ST_Contains(k.geom, ST_Point(lon, lat)))""")
 
-h("① 突合半径を変えたときの一致数（仮説1 vs 仮説2 の判別）")
-# 緯度1度 ≒ 111,320m。経度側は cos(7°)≒0.9926 なのでほぼ等方、度で近似してよい
+h("1. Match count against radius — the H1 vs H2 test")
+# One degree of latitude ~ 111,320 m. Longitude differs by cos(7 deg) ~ 0.9926, so the grid
+# is near-isotropic and degrees are an acceptable approximation.
 RADII = [(50, 0.00045), (100, 0.0009), (200, 0.0018), (300, 0.0027),
          (500, 0.0045), (1000, 0.0090)]
 for kw in ["alfamart", "indomaret"]:
     nov, = con.execute(f"select count(*) from ov where name ilike '%{kw}%'").fetchone()
     nosm, = con.execute(f"select count(*) from osm where name ilike '%{kw}%'").fetchone()
     print(f"\n  {kw}  (Overture {nov} / OSM {nosm})")
-    print(f"    {'半径':>8s} {'一致':>6s} {'OSM側の一致率':>14s} {'和集合':>8s}")
+    print(f"    {'radius':>8s} {'matched':>8s} {'OSM matched':>13s} {'union':>8s}")
     for m, deg in RADII:
         k, = con.execute(f"""
           select count(*) from osm o where o.name ilike '%{kw}%'
             and exists (select 1 from ov v where v.name ilike '%{kw}%'
                         and ST_DWithin(o.geom, v.geom, {deg}))""").fetchone()
-        print(f"    {m:>6d}m {k:>6,} {k / nosm * 100:>13.1f}% {nov + nosm - k:>8,}")
+        print(f"    {m:>6d}m {k:>8,} {k / nosm * 100:>12.1f}% {nov + nosm - k:>8,}")
 
-h("② 対照: 同一ソース内で最近隣の同ブランド店までの距離（店舗の実際の粗密）")
-# 隣の Alfamart までの距離が 200m しかない密集地なら、突合半径 200m は使えない
+h("2. Control — distance between same-brand stores within one source")
+# **This is what makes the sweep interpretable.** If neighbouring Alfamart stores are only
+# ~500 m apart, then a 500 m match radius is matching a *different* store, not the same one,
+# so results at wide radii are meaningless regardless of which hypothesis holds.
 for src, tbl, f in [("Overture", "ov", "name ilike '%alfamart%'"),
                     ("OSM", "osm", "name ilike '%alfamart%'")]:
     row = con.execute(f"""
@@ -78,10 +82,10 @@ for src, tbl, f in [("Overture", "ov", "name ilike '%alfamart%'"),
             from p a join p b on (a.lon,a.lat) != (b.lon,b.lat) group by 1,2)
       select round(min(m)), round(quantile_cont(m,0.1)), round(median(m)),
              round(quantile_cont(m,0.9)) from d""").fetchone()
-    print(f"  {src:9s} 最近隣Alfamart間距離  min={row[0]:>5.0f}m p10={row[1]:>5.0f}m "
+    print(f"  {src:9s} nearest same-brand store  min={row[0]:>5.0f}m p10={row[1]:>5.0f}m "
           f"median={row[2]:>5.0f}m p90={row[3]:>5.0f}m")
 
-h("③ OSM 独自の Alfamart/Indomaret は本当に「別の店」か（近傍に何があるか）")
+h("3. Are OSM-only chain stores really different stores? What lies near them")
 for row in con.execute("""
     select o.name,
            (select count(*) from ov v
@@ -94,8 +98,8 @@ for row in con.execute("""
                       where (v.name ilike '%alfamart%' or v.name ilike '%indomaret%')
                         and ST_DWithin(o.geom, v.geom, 0.0009))
     order by ov_any_poi limit 15""").fetchall():
-    print(f"  {str(row[0])[:34]:36s} 100m以内の Overture POI={row[1]:>3,} "
-          f"うち convenience={row[2]}")
+    print(f"  {str(row[0])[:34]:36s} Overture POIs within 100m={row[1]:>3,} "
+          f"of which convenience={row[2]}")
 n_iso, = con.execute("""
     select count(*) from osm o
     where (o.name ilike '%alfamart%' or o.name ilike '%indomaret%')
@@ -104,6 +108,7 @@ n_iso, = con.execute("""
                         and ST_DWithin(o.geom, v.geom, 0.0009))
       and not exists (select 1 from ov v where v.category='convenience_store'
                       and ST_DWithin(o.geom, v.geom, 0.0009))""").fetchone()
-print(f"\n  OSM独自ミニマーケットのうち、100m以内に Overture の convenience が"
-      f"**1件も無い**もの = {n_iso} 件")
-print("  （これが多いほど「Overture が丸ごと取りこぼした実在店舗」＝仮説1 の裏付け）")
+print(f"\n  OSM-only minimarkets with **no Overture convenience store at all** within"
+      f" 100 m: {n_iso}")
+print("  The larger this is, the stronger the evidence for H1 — real stores Overture")
+print("  missed entirely, rather than the same stores recorded at different coordinates.")
