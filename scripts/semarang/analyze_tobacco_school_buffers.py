@@ -3,7 +3,9 @@
 PP 28/2024 の学校周辺規制を、**既存データだけで**先行評価する。
 
 PP 28/2024（UU 17/2023 施行令）の該当条項:
-  - 販売禁止 **200m**: satuan pendidikan（教育施設）および児童遊技場の周囲
+  - 販売禁止 **200m**: satuan pendidikan の周囲
+    （条文は "tempat bermain anak" も併記するが、これは一般の児童公園ではなく
+     **kelompok bermain＝PAUD の一形態**を指す。TK/PAUD に含まれるので別レイヤは不要）
   - 広告禁止 **500m**: 教育施設の周囲
   - 併せて rokok ketengan（ばら売り）禁止、購入年齢 18→21 歳
 
@@ -57,6 +59,8 @@ R_ADS = 500
 #       pesantren, perguruan tinggi, atau nama lain yang sejenis dengan pendidikan formal.」
 #
 #   → **PAUD/TK を含む**。madrasah・pesantren・perguruan tinggi も含む。
+#     条文が並記する "tempat bermain anak" は一般の児童公園ではなく
+#     **kelompok bermain（KB）＝PAUD の一形態**を指すので、TK/PAUD に含まれている。
 #     当初「集合A（SD/SMP/SMA）」を主指標にしていたのは**法的に過小**だった。
 #     informal（learning center 等）は「pendidikan formal と同種」と言えないので除く。
 LEGAL = "level in ('TK','SD','SMP','SMA','SLB','PT')"

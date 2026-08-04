@@ -3,7 +3,7 @@
 Kota Semarang の学校位置を取得する（tobacco-near-schools 分析用）。
 
 PP 28/2024 の2つの規制半径を測るために学校レイヤが要る:
-  - 販売禁止 200m（satuan pendidikan / 児童遊技場から）
+  - 販売禁止 200m（satuan pendidikan から。TK/PAUD・madrasah・pesantren・大学を含む）
   - 広告禁止 500m（教育施設から）
 
 ソースの選択について

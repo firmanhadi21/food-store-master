@@ -21,10 +21,13 @@ PP 28/2024 **Pasal 434(1)(e)**:
   含めた集合が正しい。informal（learning center 等）は「pendidikan formal と同種」と
   言えないので除外する。
 
-  未対応の2点（過小評価として明記する）:
+  「tempat bermain anak」について: 条文は satuan pendidikan と並べて挙げるが、これは
+  一般の児童公園ではなく **kelompok bermain（KB）＝ PAUD の一形態**を指す（現地での用法）。
+  KB は Dapodik の PAUD 区分（TK 856 + KB 278 + TPA 31 + SPS 274）に含まれ、
+  本レイヤの level='TK' に入っているので**すでに対象に含まれている**。別レイヤは不要。
+
+  未対応（過小評価として明記する）:
    - **pesantren** は独立したレイヤとして持っていない（一部は madrasah として混在）
-   - **tempat bermain anak（児童遊技場）** は条文がもう一つの起点として挙げているが
-     レイヤ化していない。これを足せば対象はさらに増える。
 
 出力
 ----
