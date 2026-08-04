@@ -132,9 +132,50 @@ entirely in set C.
 `data/semarang/semarang_food_master.parquet` — 987 stores. Categories assumed to sell tobacco:
 
 - **minimarket** (548) — Alfamart / Indomaret / Alfamidi. Tobacco sales effectively certain.
-  POI coverage is comparatively good because these are chains.
+  **Coverage is ~50%, not "good" — see §2.3.**
 - **toko_kelontong** (186) — **a floor, not a count.** Real number is orders of magnitude higher;
   small warung do not appear in Overture or OSM. This is the gap the survey exists to fill.
+
+### 2.3 ⚠️ Chain ground-truth — the master holds only ~half the minimarkets
+
+Validated against **Google Places API (New)** as an independent third source
+(`scripts/semarang/fetch_chains_google_places.py`; 252 requests, ≈ US$8).
+
+The official locators could not be used, and were **not** circumvented:
+
+| Locator | Endpoint | Result |
+|---|---|---|
+| Alfamart / Alfagift | `webcommerce-gw.alfagift.id/v2/stores/coordinate/candidate-list` | **401** — requires account token |
+| Indomaret / klikindomaret | `www.klikindomaret.com/webapi/api/store/*` | **403** — WAF-blocked |
+
+Authenticating or defeating a WAF to harvest a store database would breach those companies'
+terms of service. Google Places is a legitimate third-party alternative.
+
+| Chain | Google | Master | Ratio | Matched @100 m | Google-only |
+|---|---:|---:|---:|---:|---:|
+| Alfamart | 330 | 182 | **0.55** | 141 | 189 |
+| Indomaret | 454 | 216 | **0.48** | 198 | 256 |
+
+**Google inflates somewhat, and this was checked rather than assumed:**
+
+- Same-chain records within 50 m: **Alfamart 10.0%, Indomaret 24.9%** — real stores rarely sit
+  that close, so Indomaret in particular is double-listed.
+- Name variants confirm contamination: `ATM BCA Indomaret` (an ATM), `Sumber Alfaria Trijaya. PT
+  (Alfamart)` (corporate entity), repeated names such as `Indomaret Klipang` ×2.
+
+Discounting duplicate pairs gives roughly **Alfamart ~314 / Indomaret ~398**, leaving the master
+at **~0.55 / ~0.54**. The master also holds stores Google lacks (41 Alfamart, 18 Indomaret
+unmatched at 100 m), so a three-source union floors the true count near
+**~350 Alfamart / ~420 Indomaret**.
+
+> **This falsifies an earlier assumption in this document.** Chain minimarkets were expected to be
+> the *well-covered* category because they are branded and mapped. They are at **~50%**.
+> Overture ∪ OSM was the right call and still reaches only half.
+
+**Known limitation:** `places.businessStatus` was not requested in the field mask, so
+**permanently-closed stores are not filtered** and form part of Google's inflation. Re-running
+with that field (≈ US$8) would tighten the estimate and **should be done before publishing these
+figures**.
 
 ---
 
@@ -205,8 +246,11 @@ median is marginally higher than shown):
    **Report as "outlets within the restricted radius", never as "violations".**
 3. **School coordinates are OSM and unvalidated.** Validate a sample against imagery before
    publication; check completeness against Dapodik counts.
-4. **The toko_kelontong rows are floors.** 186 known against a real count orders of magnitude
-   higher — the true figures only rise with fieldwork.
+4. **Every outlet row is a floor — including minimarket.** §2.3 measured chain coverage at ~50%,
+   so the absolute counts in §3.1–3.2 are roughly **half of reality**. The *shares* may survive if
+   the missing stores are spatially random, but **that is now an assumption requiring a check**,
+   not a given: if Overture and OSM miss stores preferentially in peripheral areas, the shares are
+   biased too. Testing it needs the Google layer compared against the master **by kecamatan**.
 5. **Transition provisions unchecked.** Whether PP 28/2024 grants existing outlets a compliance
    period is not established here and would change the interpretation of §3.1 entirely.
 
@@ -218,10 +262,14 @@ The asymmetry between the two outlet types is the argument for the survey:
 
 | | minimarket | toko_kelontong |
 |---|---|---|
-| POI coverage | Good — chains, well mapped | **Severely incomplete** |
-| Baseline figures above | Roughly reliable | **Floor only** |
+| POI coverage | **~50%** (measured, §2.3) | **Severely incomplete** |
+| Baseline figures above | **Floor — roughly half of reality** | **Floor only** |
 | Tobacco sale observable from POI | Inferred (chain policy) | **Not observable** |
 | Advertising observable from POI | **No** | **No** |
+
+Both columns are floors. The chain measurement in §2.3 makes the case for fieldwork *stronger*,
+not weaker: if branded chains with national store locators are only half-captured by the best
+available POI union, the informal layer cannot plausibly be better.
 
 Neither outlet type has *advertising* data in any existing source. That is only obtainable by
 photographing frontages — which is precisely what
@@ -247,7 +295,10 @@ density near schools is genuinely elevated.
    set A rests on OSM alone and is unvalidated. Use Dapodik's *public counts* per level
    (coordinates are not needed to check completeness), or request the layer from Dinas
    Pendidikan Kota Semarang.
-3. **Select the school sample** — stratify by level and neighbourhood type.
+3. **Re-run the Google fetch with `places.businessStatus`** (≈US$8) to exclude permanently-closed
+   stores, and **compare master-vs-Google coverage by kecamatan** to test whether the ~50% miss is
+   spatially random. That single check determines whether the *shares* in §3 are usable at all.
+4. **Select the school sample** — stratify by level and neighbourhood type.
 4. **Extend the capture protocol** with the tobacco attributes (survey plan §4, Phase 0).
 5. **Ethics clearance** — surveying near schools raises children-in-frame risk. Survey during
    class hours, avoid arrival and dismissal, blur at ingest.

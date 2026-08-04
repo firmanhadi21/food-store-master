@@ -144,8 +144,11 @@ h("⑤ 現地調査で埋まる部分の見積もり")
 km, = con.execute("select count(*) from st where cat='toko_kelontong'").fetchone()
 print(f"  現在の toko_kelontong は {km} 件。実態は桁違いに多い（POI に載らないため）。")
 print("  → ①の toko_kelontong 行は**下限**であり、現地調査後に大きく増える。")
-print("  → minimarket 行はチェーン店なので POI 網羅が比較的よく、下振れは小さい。")
-print("  この差そのものが『なぜ現地調査が要るか』の定量的根拠になる。")
+print("  → ★ minimarket も**下限**。Google Places との突合でマスターの網羅率は")
+print("       Alfamart 0.55 / Indomaret 0.48 と判明した（fetch_chains_google_places.py）。")
+print("       「チェーン店だから網羅がよい」という当初の想定は**誤り**だった。")
+print("  → よって①②の絶対数はいずれも実態の約半分。割合は欠落が空間的にランダムなら")
+print("     保たれるが、それ自体が未検証の仮定（kecamatan 別の突合が必要）。")
 
 os.makedirs("docs/semarang", exist_ok=True)
 con.execute("create table res(学校集合 varchar, 学校数 bigint, 業態 varchar, "
