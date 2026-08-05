@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-「warung / toko kelontong を補完する価値があるか」を、補完する前に見積もる。
+Estimate — before doing it — whether completing the warung / toko kelontong layer is worth it.
 
-考え方（日本版 verify_master_quality.py の枠組みをそのまま使う）
-----------------------------------------------------------------
-アクセス指標は「最近隣店舗までの距離が閾値を超えるか」という二値。したがって:
-  - 過剰（既に圏内の場所に店を足す）→ **判定は1ミリも変わらない**
-  - 欠落が効くのは「その店がその地点で唯一の店だった」ときだけ
+The reasoning (borrowed directly from the Japan version's verify_master_quality.py)
+-----------------------------------------------------------------------------------
+An access measure is binary: is the nearest outlet within the threshold or not. Therefore:
+  - **surplus is harmless.** Adding an outlet somewhere already inside the threshold changes
+    nothing.
+  - **a missing outlet only matters where it was the only one in range.**
 
-→ カテゴリを入れ子に足していったときの**限界寄与**を測れば、
-   「kelontong を補完したら何が変わるか」の上限が分かる。
+So the marginal contribution of each nested category bounds what completing warung could
+possibly change.
 
-ここでは人口を接続していないので **面積ベース**で測る。
-Kota Semarang は南部（Gunungpati / Mijen）に人口希薄な丘陵を抱えるため、
-面積ベースは圏外率を過大に出す。人口加重は次段（Podes / WorldPop）の課題。
+Population is not yet joined, so this is **area-based**. Kota Semarang contains sparsely
+populated hills in the south (Gunungpati, Mijen) and port/tambak land in the north, so the
+area-based uncovered share overstates the population-based one. Population weighting is the
+next step (Podes / WorldPop).
 
-出力: docs/semarang/検証_カバレッジ限界寄与.csv
+Output: docs/semarang/verify_coverage-marginal-contribution.csv
 """
 import os
 
@@ -24,40 +26,40 @@ import duckdb
 D = "data/semarang"
 M = f"read_parquet('{D}/semarang_food_master.parquet')"
 POLY = f"{D}/semarang_boundary_poly.geojson"
-OUT = "docs/semarang/検証_カバレッジ限界寄与.csv"
+OUT = "docs/semarang/verify_coverage-marginal-contribution.csv"
 
-GRID_M = 250       # 判定格子。500m 閾値の半分
+GRID_M = 250       # assessment grid, half the 500 m threshold
 THRESHOLDS = [300, 500, 1000]
 
-# 入れ子。日本版 validate_access_difficulty.py の NESTED と同じ思想。
-# 「生鮮が買えるか」を先に置き、包装食品しか無い業態を後から足す順序にしている。
+# Nested sets, in the spirit of the Japan version's NESTED list. Ordered so that "can fresh
+# food be bought here" comes first and packaged-only formats are added afterwards.
 NESTED = [
-    ("F1 pasar のみ", "['pasar']"),
+    ("F1 pasar only", "['pasar']"),
     ("F2 +supermarket", "['pasar','supermarket']"),
     ("F3 +fresh_food", "['pasar','supermarket','fresh_food']"),
     ("F4 +minimarket", "['pasar','supermarket','fresh_food','minimarket']"),
-    ("F5 +toko_kelontong(全カテゴリ)",
+    ("F5 +toko_kelontong (all)",
      "['pasar','supermarket','fresh_food','minimarket','toko_kelontong']"),
 ]
 
 con = duckdb.connect()
 con.execute("INSTALL spatial; LOAD spatial;")
-con.execute(f"create table kota as select geom::GEOMETRY geom from ST_Read('{POLY}')")
 
 
 def h(t):
     print(f"\n{'=' * 72}\n{t}\n{'=' * 72}")
 
 
-# ---- 1. 市域を覆う 250m 格子 ----
-# 緯度 -7 度。等距円筒近似（この環境の DuckDB は spheroid 系が nan を返す）
+# ---- 1. A 250 m grid covering the city ----
+# Equirectangular; at latitude -7 the longitude correction is cos(7 deg) ~ 0.993
+con.execute(f"create table kota as select geom::GEOMETRY geom from ST_Read('{POLY}')")
 b = con.execute("""select ST_XMin(geom), ST_XMax(geom), ST_YMin(geom), ST_YMax(geom)
                    from kota""").fetchone()
 dlat = GRID_M / 111320.0
 dlon = GRID_M / (111320.0 * 0.99255)
 nx = int((b[1] - b[0]) / dlon) + 1
 ny = int((b[3] - b[2]) / dlat) + 1
-print(f"格子 {nx} x {ny} = {nx*ny:,} セル（{GRID_M}m）")
+print(f"grid {nx} x {ny} = {nx*ny:,} cells ({GRID_M} m)")
 
 con.execute(f"""create table cell as
   select {b[0]} + (i + 0.5) * {dlon} as lng,
@@ -68,22 +70,22 @@ con.execute("""create table grid as
   from cell c where exists (select 1 from kota k where ST_Contains(k.geom, c_pt))
   """.replace("c_pt", "ST_Point(c.lng, c.lat)"))
 ncell, = con.execute("select count(*) from grid").fetchone()
-print(f"市域内セル {ncell:,} 件 = {ncell * (GRID_M/1000)**2:,.1f} km2")
+print(f"cells inside the city: {ncell:,} = {ncell * (GRID_M/1000)**2:,.1f} km2")
 
-# ---- 2. 店舗を平面（メートル）へ投影してバケット化 ----
+# ---- 2. Project stores and cells to a metre plane and bucket them ----
 con.execute(f"""create table st as
   select cat, lng*111320*0.99255 x, lat*111320 y from {M}""")
 con.execute("""create table gp as
   select id, lng*111320*0.99255 x, lat*111320 y from grid""")
 
-h("① カテゴリ入れ子でのカバレッジ（面積ベース）")
+h("1. Coverage as categories are added (area-based)")
 rows = []
 for thr in THRESHOLDS:
-    print(f"\n  --- 閾値 {thr}m ---")
-    print(f"  {'店舗集合':32s} {'圏内セル':>9s} {'カバー率':>8s} {'限界寄与':>9s}")
+    print(f"\n  --- threshold {thr} m ---")
+    print(f"  {'store set':32s} {'cells in':>9s} {'coverage':>9s} {'marginal':>10s}")
     prev = None
     for label, cats in NESTED:
-        # 空間バケットで候補を絞ってから実距離（等距円筒近似）
+        # Bucket first to narrow candidates, then apply the true (approximated) distance
         n_in, = con.execute(f"""
           select count(distinct g.id) from gp g join st s
             on floor(s.x/{thr})::bigint between floor(g.x/{thr})::bigint - 1
@@ -94,15 +96,15 @@ for thr in THRESHOLDS:
             and sqrt(power(g.x-s.x,2) + power(g.y-s.y,2)) <= {thr}""").fetchone()
         rate = n_in / ncell
         delta = (n_in - prev) if prev is not None else None
-        d = f"{delta:>+9,}" if delta is not None else f"{'—':>9s}"
-        print(f"  {label:32s} {n_in:>9,} {rate*100:>7.1f}% {d}")
+        d = f"{delta:>+10,}" if delta is not None else f"{'—':>10s}"
+        print(f"  {label:32s} {n_in:>9,} {rate*100:>8.1f}% {d}")
         rows.append((thr, label, n_in, ncell, round(rate, 4),
                      delta if delta is not None else 0))
         prev = n_in
 
-h("② 単独店率 — その店が消えたら圏外になる地点を作っている店の割合")
-print("  （日本版の『欠落の影響 = 不足数 × 単独店率』の単独店率にあたる）")
-print(f"  {'カテゴリ':18s} {'店舗数':>7s} {'500m以内に他店なし':>18s}")
+h("2. Isolated-store rate — outlets that are the sole reason a place is covered")
+print("  (the Japan version's 'impact of a gap = shortfall x isolated-store rate')")
+print(f"  {'category':18s} {'stores':>7s} {'no other store within 500 m':>30s}")
 for cat in ["pasar", "supermarket", "fresh_food", "minimarket", "toko_kelontong"]:
     r = con.execute(f"""
       with a as (select * from st where cat='{cat}'),
@@ -111,10 +113,11 @@ for cat in ["pasar", "supermarket", "fresh_food", "minimarket", "toko_kelontong"
         select 1 from b where (b.x,b.y) != (a.x,a.y)
           and sqrt(power(a.x-b.x,2)+power(a.y-b.y,2)) <= 500)""").fetchone()
     tot, = con.execute(f"select count(*) from st where cat='{cat}'").fetchone()
-    print(f"  {cat:18s} {tot:>7,} {r[0]:>13,} ({r[0]/tot*100:.1f}%)")
+    print(f"  {cat:18s} {tot:>7,} {r[0]:>25,} ({r[0]/tot*100:.1f}%)")
 
-h("③ 現在の圏外セルはどこか（南部丘陵か、市街地の穴か）")
-# 全カテゴリ 500m で圏外のセルの緯度分布。Semarang は北が海岸市街、南が丘陵。
+h("3. Where the uncovered cells are — southern hills, or holes in the built-up area?")
+# Semarang runs from coastal city in the north to hills in the south, so the latitude
+# profile separates the two explanations.
 con.execute(f"""create table outside as
   select g.* from gp g where not exists (
     select 1 from st s
@@ -124,19 +127,20 @@ con.execute(f"""create table outside as
                                      and floor(g.y/500)::bigint + 1
       and sqrt(power(g.x-s.x,2)+power(g.y-s.y,2)) <= 500)""")
 n_out, = con.execute("select count(*) from outside").fetchone()
-print(f"  全カテゴリ 500m で圏外のセル {n_out:,} / {ncell:,} = {n_out/ncell*100:.1f}%")
-print("\n  緯度帯別（北=海岸市街 → 南=丘陵）:")
-# `out` は DuckDB の予約語なので別名に使えない（Parser Error になる）
-for r in con.execute(f"""
+print(f"  cells beyond 500 m of any category: {n_out:,} / {ncell:,} = {n_out/ncell*100:.1f}%")
+print("\n  by latitude band (north = coastal city -> south = hills):")
+# `out` is a reserved word in DuckDB and cannot be used as an alias
+for r in con.execute("""
     select round(lat, 2) band, count(*) tot,
            count(*) filter (where id in (select id from outside)) n_out
     from grid group by 1 order by band desc""").fetchall():
     bar = "#" * int(r[2] / max(r[1], 1) * 40)
-    print(f"    lat {r[0]:>7.2f}  圏外 {r[2]:>4,}/{r[1]:<4,} ({r[2]/r[1]*100:>5.1f}%) {bar}")
+    print(f"    lat {r[0]:>7.2f}  uncovered {r[2]:>4,}/{r[1]:<4,} "
+          f"({r[2]/r[1]*100:>5.1f}%) {bar}")
 
 os.makedirs("docs/semarang", exist_ok=True)
-con.execute("create table res(閾値m int, 店舗集合 varchar, 圏内セル bigint, "
-            "総セル bigint, カバー率 double, 限界寄与セル bigint)")
+con.execute("create table res(threshold_m int, store_set varchar, cells_in bigint, "
+            "cells_total bigint, coverage double, marginal_cells bigint)")
 con.executemany("insert into res values (?,?,?,?,?,?)", rows)
 con.execute(f"copy res to '{OUT}' (header, delimiter ',')")
-print(f"\n出力: {OUT}")
+print(f"\nwrote: {OUT}")

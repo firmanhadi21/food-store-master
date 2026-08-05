@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 """
-Overture Places から Kota Semarang（インドネシア・中部ジャワ州）の POI を全件抽出する。
+Extract every Overture Places POI inside Kota Semarang, Central Java, Indonesia.
 
-日本版（scripts/extract_overture_full.sql）との違い:
-  - カテゴリで絞らず **bbox 内を全件取る**。インドネシアの食料品小売がどの Overture
-    カテゴリに落ちているかが未知のため、先に実データを見てからカテゴリを決める。
-    Semarang の bbox は小さいので全件でも数万件に収まる。
-  - 出力に `categories.primary` だけでなく `alternate` も残す（日本版で grocery_store の
-    浄化に alternate が効いたのと同じ理由）。
+Difference from the Japan version (scripts/extract_overture_full.sql)
+  - **No category filter — take everything in the bounding box.** Which Overture categories
+    Indonesian food retail actually falls into was unknown at the outset, so the categories
+    are chosen after looking at real data rather than before. Semarang's bounding box is
+    small enough that the whole extract stays in the tens of thousands.
+  - Keeps `categories.alternate` as well as `primary`, for the same reason the Japan version
+    did: the alternate list was what made grocery_store cleanable there.
 
-出力: data/semarang/overture_semarang_all.parquet
-使い方: python3 scripts/semarang/extract_overture_semarang.py
+Output: data/semarang/overture_semarang_all.parquet
+Usage:  python3 scripts/semarang/extract_overture_semarang.py
 """
 import os
 import sys
 
 import duckdb
 
-# Kota Semarang の外接矩形（やや余裕を持たせる。南は Gunungpati/Mijen の丘陵、北は海岸）
+# Bounding box of Kota Semarang, with margin. South reaches the Gunungpati/Mijen hills,
+# north the coast.
 BBOX = dict(xmin=110.20, xmax=110.56, ymin=-7.25, ymax=-6.90)
 
 RELEASE = os.environ.get("OVERTURE_RELEASE", "2026-06-17.0")
@@ -33,7 +35,7 @@ def main():
 
     print(f"release = {RELEASE}")
     print(f"bbox    = {BBOX}")
-    print("S3 スキャン中（bbox の row-group 統計で絞られるので全球スキャンにはならない）...")
+    print("scanning S3 (row-group statistics on bbox keep this from being a global scan)...")
 
     con.execute(f"""
       COPY (
@@ -60,15 +62,15 @@ def main():
     """)
 
     n, = con.execute(f"select count(*) from read_parquet('{OUT}')").fetchone()
-    print(f"\n抽出 {n:,} 件 -> {OUT}")
+    print(f"\nextracted {n:,} -> {OUT}")
 
-    print("\n=== country 内訳（bbox なので国外混入を確認）===")
+    print("\n=== country breakdown (bbox extract, so check for spillover) ===")
     for row in con.execute(
             f"select country, count(*) c from read_parquet('{OUT}') "
             "group by 1 order by c desc limit 10").fetchall():
         print(f"  {str(row[0]):6s} {row[1]:>8,}")
 
-    print("\n=== category top 40 ===")
+    print("\n=== top 40 categories ===")
     for row in con.execute(
             f"select category, count(*) c from read_parquet('{OUT}') "
             "group by 1 order by c desc limit 40").fetchall():

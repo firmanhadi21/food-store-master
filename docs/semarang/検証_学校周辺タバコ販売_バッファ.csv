@@ -1,9 +1,0 @@
-学校集合,学校数,業態,半径m,店舗総数,圏内店舗数,割合
-A 小中高のみ(SD/SMP/SMA),805,minimarket,200,949,447,0.471
-A 小中高のみ(SD/SMP/SMA),805,toko_kelontong,200,186,93,0.5
-B 中高のみ(SMP/SMA),298,minimarket,200,949,217,0.2287
-B 中高のみ(SMP/SMA),298,toko_kelontong,200,186,40,0.2151
-C 幼稚園含む全校種,2765,minimarket,200,949,778,0.8198
-C 幼稚園含む全校種,2765,toko_kelontong,200,186,145,0.7796
-A 小中高のみ(SD/SMP/SMA),0,minimarket,500,949,832,0.8767
-A 小中高のみ(SD/SMP/SMA),0,toko_kelontong,500,186,163,0.8763

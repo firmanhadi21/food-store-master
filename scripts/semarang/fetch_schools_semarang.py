@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 """
-Kota Semarang の学校位置を取得する（tobacco-near-schools 分析用）。
+Fetch school locations for Kota Semarang from OpenStreetMap (for the tobacco-near-schools
+analysis).
 
-PP 28/2024 の2つの規制半径を測るために学校レイヤが要る:
-  - 販売禁止 200m（satuan pendidikan / 児童遊技場から）
-  - 広告禁止 500m（教育施設から）
+PP 28/2024 defines two radii that need a school layer:
+  - 200 m: sale of tobacco prohibited around satuan pendidikan, which per the Penjelasan to
+    Pasal 518 includes PAUD/TK, madrasah, pesantren and higher education
+  - 500 m: advertising prohibited
 
-ソースの選択について
---------------------
-第一候補は Dapodik（Kemendikdasmen）だが、**座標は Verval SP 側にあり公開 API から
-取れない**。dapo.kemendikdasmen.go.id は bot に 403 を返す。referensi.data.kemdikbud.go.id
-は NPSN と学校名は出すが緯度経度を出さない（既存スクレイパ egin10/dapodik も
-NPSN・名称・件数のみ）。
-→ **座標付きで即座に使えるのは OSM のみ**。Dapodik は名寄せによる網羅性検証に使う
-   （NPSN と学校名の突合で「OSM に無い学校」を数える）。
+On source choice
+----------------
+The obvious first choice is Dapodik, but **it does not publish coordinates** — they live in
+Verval SP, which is authenticated. dapo.kemendikdasmen.go.id returns 403 to bots;
+referensi.data.kemendikdasmen.go.id publishes NPSN and names but no latitude/longitude
+(the existing scraper egin10/dapodik confirms the same).
 
-出力: data/semarang/osm_schools_semarang.parquet
+=> **OSM is the only source immediately usable with coordinates.** Dapodik is used instead
+   for completeness verification, matching published counts against this layer
+   (verify_school_completeness.py). Dukcapil republishes Kemendikbud data *with* coordinates
+   and is fetched separately (fetch_schools_dukcapil.py), but holds no SD or SMP for Semarang.
+
+Output: data/semarang/osm_schools_semarang.parquet
 """
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -36,11 +42,12 @@ ENDPOINTS = [
 
 BBOX = "-7.25,110.20,-6.90,110.56"  # S,W,N,E
 
-# インドネシアの学校段階:
-#   SD/MI  = 小学校（初等）      isced:level=1
-#   SMP/MTs= 中学校（前期中等）  isced:level=2
-#   SMA/SMK/MA = 高校（後期中等）isced:level=3
-# 喫煙開始年齢の観点では SMP/SMA が主対象、曝露の観点では SD も対象になる。
+# Indonesian school levels:
+#   SD/MI       primary            isced:level=1
+#   SMP/MTs     lower secondary    isced:level=2
+#   SMA/SMK/MA  upper secondary    isced:level=3
+#   TK/PAUD     early childhood
+# For smoking initiation SMP and SMA matter most; for exposure, SD and TK matter too.
 QUERY = f"""
 [out:json][timeout:180];
 (
@@ -49,6 +56,24 @@ QUERY = f"""
 );
 out center tags;
 """
+
+# Level tokens found in school names. **Matched as whole tokens, not substrings.**
+#
+# ** The first version used `if pattern in name` and misfiled "SD Negeri **Man**gunharjo"
+#   as SMA, because MANGUNHARJO contains MAN (Madrasah Aliyah Negeri) — turning a primary
+#   school into a secondary one. Same class of bug as griya / mart / toko in the master
+#   build. Indonesian school names carry these abbreviations as standalone tokens, so
+#   token matching is both sufficient and safe.
+LEVEL_TOKENS = {
+    "TK":  {"TK", "TKIT", "TKS", "PAUD", "RA", "KB", "BA", "TPA"},
+    "SD":  {"SD", "SDN", "SDIT", "SDS", "SDI", "MI", "MIN", "MIS", "MIT"},
+    "SMP": {"SMP", "SMPN", "SMPIT", "SMPS", "MTS", "MTSN", "MTSS"},
+    "SMA": {"SMA", "SMAN", "SMAS", "SMAIT", "SMK", "SMKN", "SMKS",
+            "MA", "MAN", "MAS", "MAK"},
+}
+# Order of evaluation. With token matching the order barely matters, but checking SMP/SMA
+# before SD removes any chance of SD swallowing a longer abbreviation.
+LEVEL_ORDER = ["TK", "SMA", "SMP", "SD"]
 
 
 def overpass(query):
@@ -61,42 +86,23 @@ def overpass(query):
             with urllib.request.urlopen(req, timeout=300) as r:
                 return json.loads(r.read())
         except Exception as e:  # noqa: BLE001
-            print(f"    失敗: {e}")
+            print(f"    failed: {e}")
             time.sleep(3)
-    raise SystemExit("Overpass 全滅")
-
-
-# 校名トークン → 段階。**部分一致ではなく単語単位で判定する。**
-#
-# ★ 第1版は `if pat in n` の部分一致で書いたため "SD Negeri **Man**gunharjo" の
-#   MANGUNHARJO が略号 MAN（Madrasah Aliyah Negeri）に誤爆し、小学校が高校になった。
-#   マスター構築で griya / mart / toko が誤爆したのと同じ型のバグ。
-#   インドネシアの校名は略号が独立した語として現れるので、トークン一致で十分かつ安全。
-LEVEL_TOKENS = {
-    "TK":  {"TK", "TKIT", "TKS", "PAUD", "RA", "KB", "BA", "TPA"},
-    "SD":  {"SD", "SDN", "SDIT", "SDS", "SDI", "MI", "MIN", "MIS", "MIT"},
-    "SMP": {"SMP", "SMPN", "SMPIT", "SMPS", "MTS", "MTSN", "MTSS"},
-    "SMA": {"SMA", "SMAN", "SMAS", "SMAIT", "SMK", "SMKN", "SMKS",
-            "MA", "MAN", "MAS", "MAK"},
-}
-# 判定順。長い段階名から見る必要はないが、SD より SMP/SMA を先に見ることで
-# "SD" が "SDN" 以外に紛れる余地をなくす。
-LEVEL_ORDER = ["TK", "SMA", "SMP", "SD"]
+    raise SystemExit("all Overpass endpoints failed")
 
 
 def school_level(name, tags):
-    """学校名から段階を推定する。インドネシアは校名に段階の略号が入るので名称判定が効く。
+    """Infer level from the school name; Indonesian names carry the abbreviation.
 
-    SDN/SD Negeri（小）, SMPN/MTs（中）, SMAN/SMK/MA（高）, TK/PAUD/RA（幼）。
-    OSM の isced:level があればそちらを優先する。
+    Prefers OSM's isced:level where present.
     """
     isced = tags.get("isced:level")
     if isced:
         return {"0": "TK", "1": "SD", "2": "SMP", "3": "SMA"}.get(str(isced)[0], "unknown")
     if tags.get("amenity") == "kindergarten":
         return "TK"
-    # 記号を区切りに落としてトークン化（"SDN-01" "SD/MI" 等に対応）
-    tokens = {t for t in __import__("re").split(r"[^A-Z0-9]+", (name or "").upper()) if t}
+    # Tokenise on non-alphanumerics so "SDN-01" and "SD/MI" both split correctly
+    tokens = {t for t in re.split(r"[^A-Z0-9]+", (name or "").upper()) if t}
     for lv in LEVEL_ORDER:
         if tokens & LEVEL_TOKENS[lv]:
             return lv
@@ -125,7 +131,7 @@ def main():
             "operator_type": tags.get("operator:type"),
             "lat": lat, "lon": lon,
         })
-    print(f"\nOSM 学校 {len(rows):,} 件（bbox）")
+    print(f"\nOSM schools in bbox: {len(rows):,}")
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -135,18 +141,18 @@ def main():
       select * from r
       where exists (select 1 from kota k where ST_Contains(k.geom, ST_Point(lon, lat)))""")
     n, = con.execute("select count(*) from s").fetchone()
-    print(f"Kota Semarang 市域内 {n:,} 件")
+    print(f"within Kota Semarang: {n:,}")
 
     con.execute(f"copy s to '{OUT}' (FORMAT parquet)")
-    print(f"出力: {OUT}")
+    print(f"wrote: {OUT}")
 
-    print("\n=== 段階別 ===")
+    print("\n=== by level ===")
     for row in con.execute(
             "select level, count(*) c, count(name) named from s group by 1 order by c desc"
     ).fetchall():
-        print(f"  {row[0]:8s} {row[1]:>4,}  (名称あり {row[2]:,})")
+        print(f"  {row[0]:8s} {row[1]:>4,}  (named {row[2]:,})")
 
-    print("\n=== 名称サンプル ===")
+    print("\n=== name samples ===")
     for row in con.execute(
             "select level, name from s where name is not null order by random() limit 15"
     ).fetchall():

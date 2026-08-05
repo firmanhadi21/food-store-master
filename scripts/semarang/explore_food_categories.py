@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Semarang の Overture 抽出から「食料品小売になりうる」カテゴリを洗い出し、
-ブランド構成・件数を実数感覚と突き合わせるための探索スクリプト。
+Find which Overture categories plausibly hold food retail in Semarang, and sanity-check the
+counts against real-world expectations.
 
-日本版で最初にやった「コンビニは Overture 単独で実数の 97.6%」に相当する
-一次チェックを Semarang で行うのが目的。
+This is the Semarang equivalent of the first check the Japan project ran — "Overture alone
+covers 97.6% of convenience stores against official statistics". The point is to establish,
+before building anything, whether the same source strategy can work here.
 """
 import duckdb
 
 SRC = "read_parquet('data/semarang/overture_semarang_all.parquet')"
 
-# 食料品小売になりうる Overture カテゴリの候補（広めに取る）
+# Categories that could plausibly hold food retail. Deliberately broad.
 CANDIDATES = [
     'convenience_store', 'supermarket', 'grocery_store', 'market', 'farmers_market',
     'public_market', 'wholesale_store', 'discount_store', 'department_store',
@@ -27,7 +28,7 @@ def h(t):
     print(f"\n{'=' * 72}\n{t}\n{'=' * 72}")
 
 
-h("① 候補カテゴリの実在件数（primary）")
+h("1. How many records each candidate category actually holds (primary)")
 lst = "','".join(CANDIDATES)
 rows = con.execute(f"""
   select category, count(*) c from {SRC}
@@ -35,9 +36,9 @@ rows = con.execute(f"""
 for cat, c in rows:
     print(f"  {cat:32s} {c:>6,}")
 found = {r[0] for r in rows}
-print("\n  （bbox 内に 0 件だったカテゴリ）:", ", ".join(sorted(set(CANDIDATES) - found)) or "なし")
+print("\n  (absent from the bbox):", ", ".join(sorted(set(CANDIDATES) - found)) or "none")
 
-h("② 'market' や 'pasar' を含む category 名を総当たりで探す")
+h("2. Brute-force search for any category naming a market or store")
 for row in con.execute(f"""
   select category, count(*) c from {SRC}
   where category ilike '%market%' or category ilike '%grocer%'
@@ -45,13 +46,13 @@ for row in con.execute(f"""
   group by 1 order by c desc limit 30""").fetchall():
     print(f"  {str(row[0]):40s} {row[1]:>6,}")
 
-h("③ convenience_store のブランド構成（Alfamart / Indomaret が取れているか）")
+h("3. Brands on convenience_store — are Alfamart and Indomaret being captured?")
 for row in con.execute(f"""
-  select coalesce(brand_name, '(brand なし)') b, count(*) c from {SRC}
+  select coalesce(brand_name, '(no brand)') b, count(*) c from {SRC}
   where category = 'convenience_store' group by 1 order by c desc limit 20""").fetchall():
     print(f"  {str(row[0]):32s} {row[1]:>6,}")
 
-h("④ 名称に Alfamart/Indomaret を含むものを category 横断で数える")
+h("4. Name keywords across all categories")
 for kw in ['alfamart', 'indomaret', 'alfamidi', 'superindo', 'hypermart',
            'transmart', 'giant', 'carrefour', 'pasar', 'toko', 'warung', 'apotek']:
     rows = con.execute(f"""
@@ -59,15 +60,15 @@ for kw in ['alfamart', 'indomaret', 'alfamidi', 'superindo', 'hypermart',
       where name ilike '%{kw}%' group by 1 order by c desc limit 4""").fetchall()
     total = sum(r[1] for r in rows)
     detail = " / ".join(f"{r[0]}:{r[1]}" for r in rows)
-    print(f"  {kw:12s} 計 {total:>6,}   {detail}")
+    print(f"  {kw:12s} total {total:>6,}   {detail}")
 
-h("⑤ 原典データセット構成比（日本は meta 39.8% / Foursquare 26.9% / ATP 25.7%）")
+h("5. Contributing datasets — Japan is meta 39.8% / Foursquare 26.9% / ATP 25.7%")
 for row in con.execute(f"""
   select ds, count(*) c from (select unnest(datasets) ds from {SRC})
   where ds != 'Overture' group by 1 order by c desc""").fetchall():
     print(f"  {str(row[0]):24s} {row[1]:>7,}")
 
-h("⑥ confidence 分布（食料品候補カテゴリのみ）")
+h("6. Confidence distribution across the candidate categories")
 for row in con.execute(f"""
   select category,
          count(*) c,

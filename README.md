@@ -1,3 +1,34 @@
+> ## 🇮🇩 This repository is a fork
+>
+> **Upstream**: [shiwaku/japan-food-store-master](https://github.com/shiwaku/japan-food-store-master)
+> — a nationwide food-store POI master for Japan, built to the MAFF "food access" definition.
+> The README below and most of `docs/` are upstream's, and are about Japan.
+>
+> **What this fork adds**: the same pipeline ported to **Kota Semarang, Indonesia**, and the
+> work that grew out of it — mapping tobacco retail against the school-radius provisions of
+> **PP 28/2024**.
+>
+> - Public site: **[Atlas Ruang Publik](https://firmanhadi21.github.io/atlas-ruang-publik/)**
+>   (separate repository: [firmanhadi21/atlas-ruang-publik](https://github.com/firmanhadi21/atlas-ruang-publik))
+> - Code: `scripts/semarang/` · Documentation: **[`docs/semarang/`](docs/semarang/)**
+> - `atlas/` is the working copy of the public site; upstream's `viewer/` is not deployed,
+>   because its vite base is fixed to the upstream repository name.
+>
+> The headline of the port is that **all three of the Japan version's core design decisions
+> invert**: take the union of sources rather than one per category, classify on names rather
+> than categories, and treat pasar (traditional markets) as the principal category.
+> Measurements and reasoning are in [`docs/semarang/`](docs/semarang/).
+>
+> Language note: `docs/semarang/` and `scripts/semarang/` are in English (the manuscript
+> draft is in Bahasa Indonesia), since the team working on them is Semarang-based.
+> `docs/master/`, `docs/permits/` and `docs/archive/` remain in Japanese — they are
+> upstream's work about Japan, and translating them would only break diffability against
+> upstream.
+>
+> Maintained by Firman Hadi, Department of Geodetic Engineering, Universitas Diponegoro.
+
+---
+
 # 全国 食料品店マスター（japan-food-store-master）
 
 農水省「[食料品アクセス](https://www.maff.go.jp/j/shokusan/eat/access_genjo.html)」（[食料品アクセスマップ／農林水産政策研究所](https://www.maff.go.jp/primaff/seika/fsc/faccess/a_map.html)による食料品アクセス困難人口の推計）の定義に準拠した、全国の食料品店 POI マスターデータセットの構築・検証・可視化リポジトリ。

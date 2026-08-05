@@ -151,7 +151,7 @@ the first and often only food access point during and immediately after a flood 
 map supports emergency distribution planning and post-event damage assessment.
 
 **Convenient alignment:** the northern coastal zone is where the coverage analysis
-(`検証_カバレッジ限界寄与.csv`) showed the largest gaps — 70–100% of cells outside 500m of any
+(`verify_coverage-marginal-contribution.csv`) showed the largest gaps — 70–100% of cells outside 500m of any
 mapped store. It is both where the survey adds most and where the resilience question is most
 acute.
 

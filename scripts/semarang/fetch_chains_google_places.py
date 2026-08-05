@@ -1,38 +1,42 @@
 #!/usr/bin/env python3
 """
-Google Places API (New) で Alfamart / Indomaret の実店舗数を数え、マスターを外部検証する。
+Count Alfamart and Indomaret via the Google Places API (New), as an external check on the
+master.
 
-なぜ必要か
-----------
-マスターのチェーン店数（Alfamart 182 / Indomaret 216）が実数に対して何割なのかが未検証。
-日本版が商業動態統計・JFA で行った「数量の裏取り」に相当する工程で、これが無いと
-「マスターは信用してよいか」に答えられない。
+Why this is needed
+------------------
+Nothing yet establishes what share of real chain stores the master holds (Alfamart 182,
+Indomaret 216). This is the Semarang counterpart of the "verify quantity against official
+statistics" step the Japan project did with retail-dynamics data and JFA figures; without it,
+"can the master be trusted?" is unanswerable.
 
-公式店舗ロケーターは使えない（実測）:
-  - Alfagift  webcommerce-gw.alfagift.id/v2/stores/coordinate/candidate-list → **401**（要ログイン）
-  - klikindomaret www.klikindomaret.com/webapi/api/store/*                   → **403**（WAF）
-  認証やWAFの回避は各社の利用規約に反するため行わない。
-  → 第三者かつ規約上正当な Google Places API を独立ソースとして使う。
+The official store locators are unusable (measured):
+  Alfagift  webcommerce-gw.alfagift.id/v2/stores/coordinate/candidate-list -> **401** (login)
+  klikindomaret  www.klikindomaret.com/webapi/api/store/*                  -> **403** (WAF)
+  Authenticating or defeating a WAF to harvest a store database would breach both companies'
+  terms of service, so neither is attempted. Google Places is used instead: a third party,
+  and legitimate.
 
-設計
-----
-- Text Search は 1 リクエストあたり最大 20 件・ページング上限 60 件。市域全体を1回では
-  取り切れないので**グリッドに分割**し、セルごとに検索して place id で名寄せする。
-- **60 件返ってきたセルは切り捨てられている疑い**があるので警告し、細分化を促す。
-- 課金が発生するので **既定は dry-run**。件数と概算コストを表示するだけで API は叩かない。
-  実行するには `--run` を明示する。レスポンスはキャッシュし再実行で二重課金しない。
-
-使い方
+Design
 ------
-  # 1. まず見積もり（課金なし）
+- Text Search returns at most 20 results per request and 60 with paging, so the city cannot be
+  covered in one call. It is **split into a grid**, searched per cell, and deduplicated by
+  place id.
+- A cell returning 60 results is **probably truncated**, so it is flagged for subdivision.
+- Calls cost money, so **dry-run is the default**: counts and an estimate are printed and no
+  request is made. `--run` is required. Responses are cached so a re-run does not bill twice.
+
+Usage
+-----
+  # 1. estimate first, no charge
   python3 scripts/semarang/fetch_chains_google_places.py
 
-  # 2. キーを環境変数で渡して実行（キーを引数に書かない＝履歴に残さない）
-  export GOOGLE_MAPS_API_KEY='...'      # または直前に読み込む
+  # 2. supply the key via the environment (never as an argument, which lands in shell history)
+  export GOOGLE_MAPS_API_KEY='...'
   python3 scripts/semarang/fetch_chains_google_places.py --run
 
-出力: data/semarang/google_chains_semarang.parquet
-      docs/semarang/検証_チェーン実数_Google突合.csv
+Output: data/semarang/google_chains_semarang.parquet
+        docs/semarang/verify_chain-counts-vs-google.csv
 """
 import json
 import os
@@ -47,25 +51,26 @@ D = "data/semarang"
 POLY = f"{D}/semarang_boundary_poly.geojson"
 CACHE = f"{D}/google_cache"
 OUT = f"{D}/google_chains_semarang.parquet"
-OUT_CSV = "docs/semarang/検証_チェーン実数_Google突合.csv"
-
-def h(t):
-    print(f"\n{chr(61)*72}\n{t}\n{chr(61)*72}")
-
+OUT_CSV = "docs/semarang/verify_chain-counts-vs-google.csv"
 
 ENDPOINT = "https://places.googleapis.com/v1/places:searchText"
-# Pro ティアの最小構成。rating 等の Enterprise フィールドは要求しない（課金が上がる）
+# Minimal Pro-tier field set. Enterprise fields such as rating are not requested, because
+# they move the call into a more expensive SKU.
 FIELD_MASK = ("places.id,places.displayName,places.location,"
               "places.formattedAddress,places.primaryType")
 
 CHAINS = ["Alfamart", "Indomaret"]
-CELL_KM = 2.0          # グリッド間隔。1セル内の店舗数が 60 を超えない粒度
-PAGE_LIMIT = 3         # Text Search のページング上限（20×3=60）
-COST_PER_1K = 32.0     # Text Search Pro の概算単価(USD)。実際の請求は契約による
+CELL_KM = 2.0          # grid pitch, fine enough that no cell should exceed 60 results
+PAGE_LIMIT = 3         # Text Search paging cap (20 x 3 = 60)
+COST_PER_1K = 32.0     # approximate Text Search Pro unit price, USD; actual billing varies
+
+
+def h(t):
+    print(f"\n{'=' * 72}\n{t}\n{'=' * 72}")
 
 
 def grid_cells():
-    """市域ポリゴンに掛かる CELL_KM 格子のセル（矩形）を返す。"""
+    """Return CELL_KM grid cells (as rectangles) that intersect the city polygon."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute(f"create table kota as select geom::GEOMETRY geom from ST_Read('{POLY}')")
@@ -79,7 +84,7 @@ def grid_cells():
     while y < ymax:
         x = xmin
         while x < xmax:
-            # セル矩形が市域と交差するものだけ残す（無駄な課金を避ける）
+            # Keep only cells that touch the city, to avoid paying for empty ones
             hit, = con.execute(
                 "select count(*) from kota where ST_Intersects(geom, "
                 f"ST_MakeEnvelope({x}, {y}, {x + dlon}, {y + dlat}))").fetchone()
@@ -91,7 +96,7 @@ def grid_cells():
 
 
 def search(chain, cell, key):
-    """1セル分を検索。ページングして最大 60 件返す。キャッシュがあれば使う。"""
+    """Search one cell, paging up to 60 results. Uses the cache when present."""
     os.makedirs(CACHE, exist_ok=True)
     tag = f"{chain}_{cell[0]:.4f}_{cell[1]:.4f}".replace("-", "m").replace(".", "_")
     cpath = os.path.join(CACHE, f"{tag}.json")
@@ -119,14 +124,14 @@ def search(chain, cell, key):
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             msg = e.read().decode()[:300]
-            sys.exit(f"\nAPI エラー {e.code}: {msg}\n"
-                     "（401/403 ならキー未設定・Places API (New) 未有効化・"
-                     "キーの API 制限を確認）")
+            sys.exit(f"\nAPI error {e.code}: {msg}\n"
+                     "(401/403 usually means the key is unset, Places API (New) is not "
+                     "enabled, or the key's API restrictions exclude it)")
         out.extend(data.get("places", []))
         token = data.get("nextPageToken")
         if not token:
             break
-        time.sleep(2)  # pageToken は発行直後だと無効なことがある
+        time.sleep(2)  # a pageToken can be rejected if used immediately after issue
     with open(cpath, "w") as f:
         json.dump(out, f)
     return out, False
@@ -136,21 +141,22 @@ def main():
     run = "--run" in sys.argv
     cells = grid_cells()
     n_req = len(cells) * len(CHAINS)
-    print(f"市域に掛かる {CELL_KM}km セル: {len(cells)} 個")
-    print(f"チェーン {len(CHAINS)} 件 × セル = **最小 {n_req} リクエスト**"
-          f"（ページングで最大 {n_req * PAGE_LIMIT}）")
-    print(f"概算コスト: ${n_req * COST_PER_1K / 1000:.2f} 〜 "
+    print(f"{CELL_KM} km cells touching the city: {len(cells)}")
+    print(f"{len(CHAINS)} chains x cells = **at least {n_req} requests** "
+          f"(up to {n_req * PAGE_LIMIT} with paging)")
+    print(f"estimated cost: ${n_req * COST_PER_1K / 1000:.2f} to "
           f"${n_req * PAGE_LIMIT * COST_PER_1K / 1000:.2f} "
-          f"(Text Search Pro ${COST_PER_1K}/1000 と仮定)")
+          f"(assuming Text Search Pro at ${COST_PER_1K}/1000)")
 
     if not run:
-        print("\n※ dry-run です。API は叩いていません。")
-        print("  実行するには GOOGLE_MAPS_API_KEY を設定して --run を付けてください。")
+        print("\nDry run — no API calls were made.")
+        print("  To execute, set GOOGLE_MAPS_API_KEY and pass --run.")
         return
 
     key = os.environ.get("GOOGLE_MAPS_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
-        sys.exit("GOOGLE_MAPS_API_KEY が未設定。キーは引数でなく環境変数で渡すこと。")
+        sys.exit("GOOGLE_MAPS_API_KEY is not set. Pass the key by environment variable, "
+                 "not as an argument.")
 
     rows, saturated = {}, []
     for chain in CHAINS:
@@ -171,36 +177,36 @@ def main():
                     "lat": loc.get("latitude"), "lon": loc.get("longitude"),
                 }
             if i % 20 == 0:
-                print(f"  {chain}: {i}/{len(cells)} セル "
-                      f"(キャッシュ {hit_cache}) 累計 {len(rows):,} 件")
-        print(f"  {chain}: 完了。キャッシュ利用 {hit_cache}/{len(cells)}")
+                print(f"  {chain}: {i}/{len(cells)} cells "
+                      f"(cached {hit_cache}) running total {len(rows):,}")
+        print(f"  {chain}: done. cache hits {hit_cache}/{len(cells)}")
 
     if saturated:
-        print(f"\n⚠ 60件上限に達したセルが {len(saturated)} 個。"
-              "取りこぼしの可能性があるので CELL_KM を小さくして再実行を検討。")
+        print(f"\n! {len(saturated)} cells hit the 60-result ceiling and may be truncated. "
+              "Consider reducing CELL_KM and re-running.")
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.register("r", __import__("pandas").DataFrame(list(rows.values())))
     con.execute(f"create table kota as select geom::GEOMETRY geom from ST_Read('{POLY}')")
-    # ★ Text Search は矩形の外の店も返すことがある（locationRestriction は厳密でない場合が
-    #   ある）ので、市域ポリゴンで必ずクリップする。
+    # ** Text Search can return places outside the rectangle (locationRestriction is not
+    #   always strict), so always clip to the city polygon.
     con.execute("""create table g as select * from r
       where lat is not null and exists (
         select 1 from kota k where ST_Contains(k.geom, ST_Point(lon, lat)))""")
-    # ブランド名を含まないものを除外（"Alfamart" 検索で無関係な店が混ざる）
+    # Drop results whose name does not contain the brand — searching "Alfamart" also returns
+    # unrelated businesses.
     con.execute("""create or replace table g as select * from g
       where lower(name) like '%' || lower(chain) || '%'""")
     con.execute(f"copy g to '{OUT}' (FORMAT parquet)")
     n, = con.execute("select count(*) from g").fetchone()
-    print(f"\n市域内・ブランド名一致 {n:,} 件 -> {OUT}")
+    print(f"\nin city and brand-name matched: {n:,} -> {OUT}")
 
-    # ---- Google 側の重複診断 ----
-    # 比が 0.5 前後に出たとき、「マスターが半分取りこぼしている」のか
-    # 「Google が二重計上している」のかを分離しないと解釈できない。
-    # Google Places は同一店舗を別 place_id で持つことがある（Point/Fresh 等の派生業態、
-    # ATM・宅配受取地点、閉店済みの残存）。
-    h("Google 側の内部重複（同一チェーンが 50m 以内）")
+    # ---- Duplicate diagnosis on the Google side ----
+    # When the ratio lands near 0.5, "the master is missing half" and "Google is
+    # double-counting" have to be separated. Google Places can hold the same store under
+    # several place ids (Point/Fresh sub-formats, ATMs, parcel points, closed stores).
+    h("Duplicates within Google (same chain within 50 m)")
     for chain in CHAINS:
         dup, = con.execute(f"""
           select count(*) from g a where a.chain='{chain}' and exists (
@@ -208,22 +214,24 @@ def main():
               and 111320*sqrt(power(a.lat-b.lat,2)
                 + power((a.lon-b.lon)*cos(radians(a.lat)),2)) <= 50)""").fetchone()
         tot, = con.execute(f"select count(*) from g where chain='{chain}'").fetchone()
-        print(f"  {chain:12s} {dup:>4,}/{tot:<5,} = {dup/tot*100:5.1f}% が 50m 以内に同チェーン他店")
-    print("  ※ 高いほど Google 側の二重計上が疑わしい（実店舗が 50m 以内に並ぶことは稀）")
+        print(f"  {chain:12s} {dup:>4,}/{tot:<5,} = {dup/tot*100:5.1f}% have a same-chain"
+              f" record within 50 m")
+    print("  The higher this is, the more likely Google is double-counting — real stores")
+    print("  rarely stand 50 m apart.")
 
-    h("Google 側の名称バリエーション（派生業態・非店舗の混入確認）")
+    h("Name variants in Google (checking for sub-formats and non-stores)")
     for row in con.execute("""
         select chain, name, count(*) c from g
         where lower(name) not in (lower(chain))
         group by 1,2 order by c desc limit 15""").fetchall():
         print(f"  {row[0]:11s} {str(row[1])[:44]:46s} {row[2]:>3,}")
 
-    h("マスターとの突合")
+    h("Reconciliation against the master")
     con.execute(f"""create table m as
       select * from read_parquet('{D}/semarang_food_master.parquet')""")
     out_rows = []
-    print(f"  {'チェーン':12s} {'Google':>7s} {'マスター':>8s} {'比':>6s} "
-          f"{'100m一致':>9s} {'Google独自':>10s}")
+    print(f"  {'chain':12s} {'Google':>7s} {'master':>8s} {'ratio':>6s} "
+          f"{'matched 100m':>13s} {'Google-only':>12s}")
     for chain in CHAINS:
         gc, = con.execute(f"select count(*) from g where chain='{chain}'").fetchone()
         mc, = con.execute(
@@ -234,19 +242,20 @@ def main():
               and 111320*sqrt(power(m.lat-g.lat,2)
                 + power((m.lng-g.lon)*cos(radians(g.lat)),2)) <= 100)""").fetchone()
         ratio = mc / gc if gc else 0
-        print(f"  {chain:12s} {gc:>7,} {mc:>8,} {ratio:>6.2f} {match:>9,} {gc - match:>10,}")
+        print(f"  {chain:12s} {gc:>7,} {mc:>8,} {ratio:>6.2f} {match:>13,} {gc - match:>12,}")
         out_rows.append((chain, gc, mc, round(ratio, 3), match, gc - match))
 
     os.makedirs("docs/semarang", exist_ok=True)
-    # ★ DuckDB は識別子を数字で始められない。"100m一致" は Parser Error になるので
-    #   列名を英字始まりにする（実際に踏んだ）。
+    # ** DuckDB identifiers cannot begin with a digit — a column named "100m_match" raises a
+    #   Parser Error, which this actually hit. Keep column names alphabetic-initial.
     con.execute('create table res(chain varchar, google_n bigint, master_n bigint, '
                 'master_ratio double, match_100m bigint, google_only bigint)')
     con.executemany("insert into res values (?,?,?,?,?,?)", out_rows)
     con.execute(f"copy res to '{OUT_CSV}' (header, delimiter ',')")
-    print(f"\n出力: {OUT_CSV}")
-    print("\n※ Google Places も悉皆ではない（第三者データ）。3ソース目として扱い、"
-          "\n  「マスター比が 1 に近いか」ではなく「桁が合うか・大きな穴が無いか」を見る。")
+    print(f"\nwrote: {OUT_CSV}")
+    print("\nNote: Google Places is not a census either. Treat it as a third source and ask")
+    print("whether the magnitudes agree and whether there are large spatial holes — not")
+    print("whether the master/Google ratio is 1.0.")
 
 
 if __name__ == "__main__":

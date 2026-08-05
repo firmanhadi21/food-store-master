@@ -1,0 +1,9 @@
+school_set,n_schools,format,radius_m,outlets_total,outlets_within,share
+statutory satuan pendidikan,2553,minimarket,200,949,755,0.7956
+statutory satuan pendidikan,2553,toko_kelontong,200,186,143,0.7688
+(ref) SD/SMP/SMA only,805,minimarket,200,949,447,0.471
+(ref) SD/SMP/SMA only,805,toko_kelontong,200,186,93,0.5
+(ref) SMP/SMA only,298,minimarket,200,949,217,0.2287
+(ref) SMP/SMA only,298,toko_kelontong,200,186,40,0.2151
+statutory satuan pendidikan,0,minimarket,500,949,927,0.9768
+statutory satuan pendidikan,0,toko_kelontong,500,186,182,0.9785
